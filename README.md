@@ -13,6 +13,9 @@ and lets you quickly navigate, search, and use previous clipboard contents.
 
 Maccy works on macOS Sonoma 14 or higher.
 
+This personal fork adds compact image previews and trackpad zoom. See [development notes](DEVELOPMENT.md)
+and the [isolated preview demo](qa/README.md) for the branch baseline, build commands, and validation scope.
+
 <!-- vim-markdown-toc GFM -->
 
 * [Features](#features)
