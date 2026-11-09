@@ -1,7 +1,7 @@
 # 图片预览验证记录
 
 基线：官方 2.8.0，`7c1644bfbed1dd0d703ecdbaf4a1b9a3a1d0b295`。
-分支：`codex/hover-image-zoom`。已安装为日常版本；仓库与提交记录见 `DEVELOPMENT.md`。
+个人主线：`master`，已合入验收通过的 `codex/hover-image-zoom`；原功能分支保留。已安装为日常版本；仓库与提交记录见 `DEVELOPMENT.md`。
 日常验收包：`/Applications/Maccy.app`，2.8.0，代码提交 `94c40ec4f1d7ddc136b102637181c3d1de755edb`。
 
 ## 行为

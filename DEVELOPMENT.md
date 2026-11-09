@@ -7,15 +7,16 @@
 
 - `origin`：个人仓库 `https://github.com/ylx-vt/Maccy.git`。
 - `upstream`：官方仓库 `https://github.com/p0deje/Maccy.git`。
-- 当前功能分支：`codex/hover-image-zoom`；阶段基线保留在 `codex/compact-image-preview`。
-- 现有远端分支保留；功能分支验收后再合并到个人主线，不强推覆盖旧历史。
-- 后续迭代从个人仓库最新已验证的开发提交创建分支；同步官方版本时明确记录上游 tag、合并范围和验证结果。
+- 个人主线为 `master`，已合入官方 2.8.0 基线及本轮图片预览、悬停缩放和验收记录。
+- 已验收功能分支 `codex/hover-image-zoom` 和阶段基线 `codex/compact-image-preview` 保留；合并保留原有提交历史，不强推覆盖旧历史。
+- 后续迭代从最新 `master` 创建功能分支；同步官方版本时明确记录上游 tag、合并范围和验证结果。
 
 ```sh
 git fetch origin
 git fetch upstream --tags
-git switch codex/hover-image-zoom
+git switch master
 git pull --ff-only
+git switch -c codex/next-feature
 ```
 
 ## 当前改动
