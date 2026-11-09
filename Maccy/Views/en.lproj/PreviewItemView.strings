@@ -14,4 +14,4 @@
 "FitImage" = "Fit";
 "ZoomInImage" = "Zoom in";
 "ZoomOutImage" = "Zoom out";
-"ImageZoomHint" = "Pinch to zoom, scroll to pan, or double-click the image to fit.";
+"ImageZoomHint" = "Click the image to activate it, then pinch to zoom. Scroll to pan, or double-click to fit.";

@@ -7,7 +7,6 @@ final class ImagePreviewZoom {
   func zoomIn() { scrollView?.zoom(by: 1.5) }
   func zoomOut() { scrollView?.zoom(by: 1 / 1.5) }
   func fit() { scrollView?.resetToFit() }
-
 }
 
 struct ZoomableImagePreview: NSViewRepresentable {
@@ -107,6 +106,7 @@ class ZoomableImageScrollView: NSScrollView {
     endMagnification()
     guard window != nil, PreviewGestureDiagnostics.isEnabled else { return }
     PreviewGestureDiagnostics.write("attached key=\(window?.isKeyWindow == true) active=\(NSApp.isActive)")
+    recordWindowState("attached")
     magnificationMonitor = NSEvent.addLocalMonitorForEvents(
       matching: [.magnify, .beginGesture, .endGesture, .gesture, .scrollWheel]
     ) { [weak self] event in
@@ -178,10 +178,19 @@ class ZoomableImageScrollView: NSScrollView {
   }
 
   func zoom(by factor: CGFloat) {
+    recordWindowState("zoom-control")
     layoutSubtreeIfNeeded()
     let scale = min(max(magnification * factor, minMagnification), maxMagnification)
     let center = NSPoint(x: contentView.bounds.midX, y: contentView.bounds.midY)
     setMagnification(scale, centeredAt: center)
+  }
+
+  private func recordWindowState(_ context: String) {
+    guard PreviewGestureDiagnostics.isEnabled, let window else { return }
+    PreviewGestureDiagnostics.write(
+      "window-state context=\(context) opaque=\(window.isOpaque) alpha=\(window.backgroundColor.alphaComponent) "
+        + "viewOpaque=\(isOpaque) imageOpaque=\(imageView.isOpaque) key=\(window.isKeyWindow)"
+    )
   }
 
   func resetToFit() {

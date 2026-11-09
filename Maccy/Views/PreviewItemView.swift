@@ -57,7 +57,6 @@ struct PreviewItemView: View {
               .buttonStyle(.borderless)
               .excludeFromWindowMovableByBackground()
             }
-            .help(Text("ImageZoomHint", tableName: "PreviewItemView"))
           } else {
             previewImage {
               ZStack {

@@ -21,7 +21,7 @@ git pull --ff-only
 ## 当前改动
 
 图片在并排侧栏内适配显示，显示区域最多 400×480 点；图片尺寸不再决定窗口尺寸。
-支持触控板双指捏合缩放和双指滚动查看局部，使用原始图像查看细节。
+先点击预览图片激活，再用触控板双指捏合缩放、双指滚动查看局部，使用原始图像查看细节。
 双击图片或点击“适配”恢复全图；切换图片重置缩放，同一图片的普通界面刷新保留缩放。
 
 布局与图像视图位于 `Maccy/Views/PreviewItemView.swift` 和 `ZoomableImagePreview.swift`；
@@ -60,10 +60,11 @@ xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
 
 ### 捏合排查
 
-已安装为日常版本，按钮缩放和双指滚动已由用户确认有效。
+已安装为日常版本，按钮缩放、双指滚动和点击图片后的双指捏合均已由用户实机确认。
 独立对照复现了透明背景配合不透明窗口标记时丢失捏合事件的问题；
 将 `FloatingPanel.isOpaque` 设为 `false` 后，在保持透明玻璃背景的对照中恢复捏合。
-图片使用 `NSMagnificationGestureRecognizer` 识别捏合，窗口修复接入日常应用后仍须实机确认。
+图片使用 `NSMagnificationGestureRecognizer` 识别捏合；日常版实测先点击大图激活后可缩放，
+事件记录确认收到捏合并改变倍率，方向键切换列表也已核查。界面不显示缩放悬停提示或额外说明文字。
 可在退出应用后用 `open -a /Applications/Maccy.app --args --preview-gesture-diagnostics`
 临时开启诊断。仅记录最多 500 条事件类型、命中状态和缩放数值，
 保存在应用沙盒临时目录的 `Maccy-preview-gesture.log`；不包含剪贴板内容和条目身份。
