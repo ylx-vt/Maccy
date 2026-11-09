@@ -126,6 +126,22 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate, ImagePreviewActiv
     makeKeyAndOrderFront(nil)
   }
 
+  override func sendEvent(_ event: NSEvent) {
+    if event.type == .keyDown,
+       case .close = KeyChord(event),
+       !AppState.shared.isEditingItem,
+       attachedSheet == nil,
+       NSApp.alertWindow == nil,
+       NSApp.characterPickerWindow == nil {
+      let hasMarkedText = (firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
+      if !hasMarkedText {
+        close()
+        return
+      }
+    }
+    super.sendEvent(event)
+  }
+
   func verticallyResize(to newHeight: CGFloat) {
     var newSize = frame.size
     newSize.height = newHeight

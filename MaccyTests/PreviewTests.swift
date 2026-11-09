@@ -1,10 +1,37 @@
 import AppKit
+import Defaults
+import SwiftUI
 import Testing
 @testable import Maccy
 
 @Suite(.serialized)
 @MainActor
 struct PreviewTests {
+  @Test("Escape closes the popup even when an AppKit control owns keyboard focus")
+  func escapeClosesFromNativeResponder() throws {
+    let savedSize = Defaults[.windowSize]
+    let wasEditing = AppState.shared.isEditingItem
+    defer {
+      Defaults[.windowSize] = savedSize
+      AppState.shared.isEditingItem = wasEditing
+    }
+    AppState.shared.isEditingItem = false
+    let panel = EscapeTestPanel(
+      contentRect: NSRect(x: 0, y: 0, width: 300, height: 300),
+      onClose: {}, view: { EmptyView() }
+    )
+    let nativeControl = NSTextView(frame: NSRect(x: 0, y: 0, width: 300, height: 300))
+    panel.contentView = nativeControl
+    #expect(panel.makeFirstResponder(nativeControl))
+    let escape = try #require(NSEvent.keyEvent(
+      with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0,
+      windowNumber: panel.windowNumber, context: nil, characters: "\u{1b}",
+      charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53
+    ))
+    panel.sendEvent(escape)
+    #expect(panel.closeCalls == 1)
+  }
+
   @Test("Recognized pinches use cumulative scale without compounding and reset between gestures")
   func recognizedGestureMagnification() {
     let view = zoomPreview(NSImage(size: NSSize(width: 1200, height: 2400)))
@@ -161,4 +188,10 @@ struct PreviewTests {
       }
     }
   }
+}
+
+@MainActor
+private final class EscapeTestPanel: FloatingPanel<EmptyView> {
+  var closeCalls = 0
+  override func close() { closeCalls += 1 }
 }

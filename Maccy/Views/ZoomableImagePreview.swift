@@ -39,7 +39,7 @@ class ZoomableImageScrollView: NSScrollView {
   private(set) var fittedMagnification: CGFloat = 1
 
   override var mouseDownCanMoveWindow: Bool { false }
-  override var acceptsFirstResponder: Bool { true }
+  override var acceptsFirstResponder: Bool { false }
   override var needsPanelToBecomeKey: Bool { true }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override var intrinsicContentSize: NSSize {
@@ -266,6 +266,7 @@ private class CenteredImageClipView: NSClipView {
 
 private class PreviewZoomImageView: NSImageView {
   override var mouseDownCanMoveWindow: Bool { false }
+  override var acceptsFirstResponder: Bool { false }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   override func mouseDown(with event: NSEvent) {
