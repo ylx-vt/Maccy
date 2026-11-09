@@ -7,7 +7,6 @@ struct PreviewItemView: View {
 
   var item: HistoryItemDecorator
   @State private var zoom = ImagePreviewZoom()
-  @GestureState private var isMagnifying = false
 
   @ViewBuilder
   func previewImage(content: @escaping () -> some View) -> some View {
@@ -38,17 +37,6 @@ struct PreviewItemView: View {
               GeometryReader { geometry in
                 ZoomableImagePreview(image: item.item.image ?? image, identity: item.id, zoom: zoom)
                   .frame(width: min(geometry.size.width, ImagePreviewSizing.maximumSize.width))
-                  // A nonempty hit surface is needed for gestures on recent macOS.
-                  .background(Color.white.opacity(0.001))
-                  .contentShape(Rectangle())
-                  .highPriorityGesture(
-                    MagnifyGesture(minimumScaleDelta: 0.005)
-                      .updating($isMagnifying) { _, active, _ in active = true }
-                      .onChanged { value in
-                        zoom.updateMagnification(value.magnification, anchor: value.startAnchor)
-                      }
-                      .onEnded { _ in zoom.endMagnification() }
-                  )
                   .frame(maxWidth: .infinity, maxHeight: .infinity)
               }
               .frame(maxHeight: ImagePreviewSizing.maximumSize.height)
@@ -151,10 +139,6 @@ struct PreviewItemView: View {
       }
     }
     .controlSize(.small)
-    .onChange(of: isMagnifying) { _, active in
-      // GestureState also resets after cancellation, which has no onEnded call.
-      if !active { zoom.endMagnification() }
-    }
   }
 }
 

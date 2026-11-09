@@ -8,11 +8,6 @@ final class ImagePreviewZoom {
   func zoomOut() { scrollView?.zoom(by: 1 / 1.5) }
   func fit() { scrollView?.resetToFit() }
 
-  func updateMagnification(_ scale: CGFloat, anchor: UnitPoint) {
-    scrollView?.updateMagnification(scale, anchor: anchor)
-  }
-
-  func endMagnification() { scrollView?.endMagnification() }
 }
 
 struct ZoomableImagePreview: NSViewRepresentable {
@@ -41,10 +36,13 @@ class ZoomableImageScrollView: NSScrollView {
   private var needsInitialFit = true
   private var magnificationMonitor: Any?
   private var gestureStartMagnification: CGFloat?
+  private var pinchAnchor = UnitPoint.center
   private(set) var fittedMagnification: CGFloat = 1
 
   override var mouseDownCanMoveWindow: Bool { false }
-  override var acceptsFirstResponder: Bool { false }
+  override var acceptsFirstResponder: Bool { true }
+  override var needsPanelToBecomeKey: Bool { true }
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
   override var intrinsicContentSize: NSSize {
     NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
   }
@@ -61,16 +59,39 @@ class ZoomableImageScrollView: NSScrollView {
     autohidesScrollers = true
     horizontalScrollElasticity = .none
     verticalScrollElasticity = .none
-    // SwiftUI owns pinch recognition in the hosting hierarchy; AppKit owns the
-    // image transform and scrolling. Disable its second, native pinch handler.
+    // One native recognizer owns pinch input, including cancellation. The scroll
+    // view retains native transforms and scrolling without a second pinch path.
     allowsMagnification = false
     minMagnification = 0.0001
     maxMagnification = 8
     imageView.imageScaling = .scaleProportionallyUpOrDown
     imageView.imageAlignment = .alignCenter
     documentView = imageView
+    let pinch = NSMagnificationGestureRecognizer(target: self, action: #selector(handlePinch(_:)))
+    pinch.delaysMagnificationEvents = true
+    addGestureRecognizer(pinch)
     setAccessibilityIdentifier("image-preview")
     setAccessibilityLabel(NSLocalizedString("ImageZoomHint", tableName: "PreviewItemView", comment: ""))
+  }
+
+  @objc private func handlePinch(_ recognizer: NSMagnificationGestureRecognizer) {
+    if recognizer.state == .began {
+      endMagnification()
+      let location = recognizer.location(in: self)
+      let x = (location.x - bounds.minX) / max(bounds.width, 1)
+      let y = (location.y - bounds.minY) / max(bounds.height, 1)
+      pinchAnchor = UnitPoint(x: x, y: isFlipped ? y : 1 - y)
+    }
+    switch recognizer.state {
+    case .began, .changed, .ended:
+      PreviewGestureDiagnostics.write("native-pinch phase=\(recognizer.state.rawValue) scale=\(recognizer.magnification)")
+      updateMagnification(1 + recognizer.magnification, anchor: pinchAnchor)
+    default:
+      break
+    }
+    if recognizer.state == .ended || recognizer.state == .cancelled || recognizer.state == .failed {
+      endMagnification()
+    }
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -113,7 +134,7 @@ class ZoomableImageScrollView: NSScrollView {
     )
     let before = magnification
     setMagnification(min(max(start * scale, minMagnification), maxMagnification), centeredAt: point)
-    PreviewGestureDiagnostics.write("swiftui-pinch scale=\(scale) before=\(before) after=\(magnification)")
+    PreviewGestureDiagnostics.write("zoom scale=\(scale) before=\(before) after=\(magnification)")
   }
 
   func endMagnification() {
@@ -186,6 +207,7 @@ class ZoomableImageScrollView: NSScrollView {
 private enum PreviewGestureDiagnostics {
   static let isEnabled = CommandLine.arguments.contains("--preview-gesture-diagnostics")
   private static var remaining = 500
+  private static var remainingScroll = 20
   private static let output: FileHandle? = {
     guard isEnabled else { return nil }
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("Maccy-preview-gesture.log")
@@ -196,6 +218,10 @@ private enum PreviewGestureDiagnostics {
 
   static func write(_ message: String) {
     guard let output, remaining > 0 else { return }
+    if message.hasPrefix("event=22 ") || message.hasPrefix("native-scroll ") {
+      guard remainingScroll > 0 else { return }
+      remainingScroll -= 1
+    }
     remaining -= 1
     try? output.write(contentsOf: Data((message + "\n").utf8))
   }

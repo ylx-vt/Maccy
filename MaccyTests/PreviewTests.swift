@@ -5,8 +5,8 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct PreviewTests {
-  @Test("Hosting gesture uses cumulative scale without compounding and resets between pinches")
-  func hostingGestureMagnification() {
+  @Test("Recognized pinches use cumulative scale without compounding and reset between gestures")
+  func recognizedGestureMagnification() {
     let view = zoomPreview(NSImage(size: NSSize(width: 1200, height: 2400)))
     let fitted = view.fittedMagnification
     let frame = view.frame
