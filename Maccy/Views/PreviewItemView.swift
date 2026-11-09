@@ -57,6 +57,7 @@ struct PreviewItemView: View {
               .buttonStyle(.borderless)
             }
             // Keep the image's pointer tracking independent of tooltip help.
+            .background(Color.white.opacity(0.001))
             .contentShape(Rectangle())
             .excludeFromWindowMovableByBackground()
           } else {
