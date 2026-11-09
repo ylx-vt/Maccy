@@ -44,10 +44,9 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     titlebarAppearsTransparent = true
     isMovableByWindowBackground = true
     hidesOnDeactivate = false
-    // A clear window declared opaque can lose magnify events before delivery.
-    // Match its backing to the transparent glass content.
-    isOpaque = false
-    backgroundColor = .clear
+    // Use a solid backing while verifying trackpad event delivery in the panel.
+    backgroundColor = .windowBackgroundColor
+    isOpaque = true
     titlebarSeparatorStyle = .none
 
     // Hide all traffic light buttons
