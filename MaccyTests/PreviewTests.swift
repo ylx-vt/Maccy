@@ -5,6 +5,23 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct PreviewTests {
+  @Test("Magnify gesture deltas zoom in place and respect fit and maximum limits")
+  func nativeGestureMagnification() {
+    let view = zoomPreview(NSImage(size: NSSize(width: 1200, height: 2400)))
+    let fitted = view.fittedMagnification
+    let frame = view.frame
+    let point = NSPoint(x: view.contentView.bounds.midX, y: view.contentView.bounds.midY)
+    view.magnify(by: 0.5, at: point)
+    #expect(abs(view.magnification - fitted * 1.5) < 0.0001)
+    #expect(view.frame == frame)
+    view.magnify(by: -0.9, at: point)
+    #expect(view.magnification == view.minMagnification)
+    view.magnify(by: 10000, at: point)
+    #expect(view.magnification == view.maxMagnification)
+    view.magnify(by: .nan, at: point)
+    #expect(view.magnification == view.maxMagnification)
+  }
+
   @Test("Native preview enables pinch zoom and preserves the source image")
   func nativePinchPreview() throws {
     let image = NSImage(size: NSSize(width: 1200, height: 2400))

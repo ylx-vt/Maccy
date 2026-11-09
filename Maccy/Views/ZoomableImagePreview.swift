@@ -33,6 +33,7 @@ class ZoomableImageScrollView: NSScrollView {
   private var imageIdentity: UUID?
   private var lastViewportSize = NSSize.zero
   private var needsInitialFit = true
+  private var magnificationMonitor: Any?
   private(set) var fittedMagnification: CGFloat = 1
 
   override var mouseDownCanMoveWindow: Bool { false }
@@ -65,6 +66,39 @@ class ZoomableImageScrollView: NSScrollView {
   }
 
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+  isolated deinit {
+    if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
+  }
+
+  override func viewDidMoveToWindow() {
+    super.viewDidMoveToWindow()
+    if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
+    magnificationMonitor = nil
+    guard window != nil else { return }
+    // SwiftUI's hosting responder can consume magnify events before AppKit's
+    // default scroll-view handler. Route only events inside this visible canvas;
+    // leave all gestures in the history list and other windows untouched.
+    magnificationMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak self] event in
+      guard let self, let window = self.window, window === event.window,
+            self.allowsMagnification, !self.isHiddenOrHasHiddenAncestor else { return event }
+      let location = self.convert(event.locationInWindow, from: nil)
+      guard self.visibleRect.contains(location) else { return event }
+      self.magnify(with: event)
+      return nil
+    }
+  }
+
+  override func magnify(with event: NSEvent) {
+    magnify(by: event.magnification, at: contentView.convert(event.locationInWindow, from: nil))
+  }
+
+  func magnify(by delta: CGFloat, at point: NSPoint) {
+    guard delta.isFinite, delta > -1 else { return }
+    layoutSubtreeIfNeeded()
+    let scale = min(max(magnification * (1 + delta), minMagnification), maxMagnification)
+    setMagnification(scale, centeredAt: point)
+  }
 
   func display(_ image: NSImage, identity: UUID) {
     guard imageIdentity != identity else { return }
