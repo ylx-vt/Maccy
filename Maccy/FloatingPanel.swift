@@ -44,6 +44,9 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     titlebarAppearsTransparent = true
     isMovableByWindowBackground = true
     hidesOnDeactivate = false
+    // A clear window declared opaque can lose magnify events before delivery.
+    // Match its backing to the transparent glass content.
+    isOpaque = false
     backgroundColor = .clear
     titlebarSeparatorStyle = .none
 

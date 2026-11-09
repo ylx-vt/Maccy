@@ -60,7 +60,10 @@ xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
 
 ### 捏合排查
 
-已安装为日常版本，真实捏合仍在排查；按钮缩放已由用户确认有效。
+已安装为日常版本，按钮缩放和双指滚动已由用户确认有效。
+独立对照复现了透明背景配合不透明窗口标记时丢失捏合事件的问题；
+将 `FloatingPanel.isOpaque` 设为 `false` 后，在保持透明玻璃背景的对照中恢复捏合。
+图片使用 `NSMagnificationGestureRecognizer` 识别捏合，窗口修复接入日常应用后仍须实机确认。
 可在退出应用后用 `open -a /Applications/Maccy.app --args --preview-gesture-diagnostics`
 临时开启诊断。仅记录最多 500 条事件类型、命中状态和缩放数值，
 保存在应用沙盒临时目录的 `Maccy-preview-gesture.log`；不包含剪贴板内容和条目身份。
