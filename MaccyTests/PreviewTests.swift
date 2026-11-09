@@ -7,6 +7,48 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct PreviewTests {
+  @Test("Hover prepares pinch only inside the visible preview of the key popup")
+  func hoverPreparesImageInteraction() throws {
+    let previousKeyWindow = NSApp.keyWindow
+    let panel = HoverTestPanel(
+      contentRect: NSRect(x: 20000, y: 20000, width: 500, height: 500),
+      styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false
+    )
+    let canvas = NSView(frame: NSRect(x: 0, y: 0, width: 500, height: 500))
+    let preview = zoomPreview(NSImage(size: NSSize(width: 1200, height: 2400)))
+    preview.setFrameOrigin(NSPoint(x: 100, y: 50))
+    canvas.addSubview(preview)
+    panel.contentView = canvas
+    panel.makeKeyAndOrderFront(nil)
+    defer {
+      panel.orderOut(nil)
+      previousKeyWindow?.makeKey()
+    }
+    #expect(panel.isKeyWindow)
+    canvas.layoutSubtreeIfNeeded()
+    let inside = preview.convert(NSPoint(x: preview.visibleRect.midX, y: preview.visibleRect.midY), to: nil)
+    let outside = preview.convert(NSPoint(x: preview.visibleRect.maxX + 10, y: preview.visibleRect.midY), to: nil)
+    let before = panel.activationRequests
+    // Use the actual view/window geometry and normal AppKit enter-event path;
+    // no global input or application activation is synthesized by the test.
+    let enter = try #require(NSEvent.enterExitEvent(
+      with: .mouseEntered, location: inside,
+      modifierFlags: [], timestamp: 0, windowNumber: panel.windowNumber,
+      context: nil, eventNumber: 0, trackingNumber: 0, userData: nil
+    ))
+    preview.mouseEntered(with: enter)
+    #expect(panel.activationRequests == before + 1)
+    preview.activateForHover(at: outside)
+    #expect(panel.activationRequests == before + 1)
+    preview.isHidden = true
+    preview.activateForHover(at: enter.locationInWindow)
+    #expect(panel.activationRequests == before + 1)
+    preview.isHidden = false
+    panel.orderOut(nil)
+    preview.activateForHover(at: enter.locationInWindow)
+    #expect(panel.activationRequests == before + 1)
+  }
+
   @Test("Escape closes the popup even when an AppKit control owns keyboard focus")
   func escapeClosesFromNativeResponder() throws {
     let savedSize = Defaults[.windowSize]
@@ -194,4 +236,11 @@ struct PreviewTests {
 private final class EscapeTestPanel: FloatingPanel<EmptyView> {
   var closeCalls = 0
   override func close() { closeCalls += 1 }
+}
+
+@MainActor
+private final class HoverTestPanel: NSPanel, ImagePreviewActivating {
+  var activationRequests = 0
+  override var canBecomeKey: Bool { true }
+  func activateForImagePreview() { activationRequests += 1 }
 }

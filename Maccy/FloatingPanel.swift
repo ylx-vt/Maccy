@@ -120,8 +120,8 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate, ImagePreviewActiv
     }
     activatedForImagePreview = true
     // A nonactivating clipboard panel can receive keys and scrolling while its
-    // application remains in the background. Trackpad magnification needs the
-    // application activation normally provided by a standard window.
+    // application remains in the background. Entering the image canvas prepares
+    // app activation so the first pinch works without a click.
     NSApp.activate(ignoringOtherApps: true)
     makeKeyAndOrderFront(nil)
   }

@@ -34,6 +34,9 @@ class ZoomableImageScrollView: NSScrollView {
   private var lastViewportSize = NSSize.zero
   private var needsInitialFit = true
   private var magnificationMonitor: Any?
+  private var hoverTrackingArea: NSTrackingArea?
+  private var keyWindowObserver: NSObjectProtocol?
+  private var hoverActivationScheduled = false
   private var gestureStartMagnification: CGFloat?
   private var pinchAnchor = UnitPoint.center
   private(set) var fittedMagnification: CGFloat = 1
@@ -99,6 +102,56 @@ class ZoomableImageScrollView: NSScrollView {
     (window as? any ImagePreviewActivating)?.activateForImagePreview()
   }
 
+  // The clipboard panel can be key while its app stays inactive. Prepare the
+  // existing native pinch path when the pointer enters the visible canvas.
+  // Checking the key window prevents a retained preview from taking focus while
+  // the user is working in another window.
+  func activateForHover(at windowPoint: NSPoint) {
+    guard let window, window.isVisible, window.isKeyWindow,
+          !isHiddenOrHasHiddenAncestor,
+          visibleRect.contains(convert(windowPoint, from: nil)) else { return }
+    activateForPointerInteraction()
+  }
+
+  private func activateForCurrentPointer() {
+    guard let window else { return }
+    activateForHover(at: window.convertPoint(fromScreen: NSEvent.mouseLocation))
+  }
+
+  private func scheduleHoverActivation() {
+    guard !hoverActivationScheduled else { return }
+    hoverActivationScheduled = true
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.hoverActivationScheduled = false
+      self.activateForCurrentPointer()
+    }
+  }
+
+  override func updateTrackingAreas() {
+    if let hoverTrackingArea { removeTrackingArea(hoverTrackingArea) }
+    super.updateTrackingAreas()
+    let area = NSTrackingArea(
+      rect: .zero,
+      options: [.activeAlways, .inVisibleRect, .mouseEnteredAndExited, .mouseMoved],
+      owner: self, userInfo: nil
+    )
+    hoverTrackingArea = area
+    addTrackingArea(area)
+    // A preview can appear beneath a stationary pointer after selecting an
+    // image or reopening the popup, without receiving a new mouse-enter event.
+    // Activation may lay out the window; run after AppKit finishes this update.
+    scheduleHoverActivation()
+  }
+
+  override func mouseEntered(with event: NSEvent) {
+    activateForHover(at: event.locationInWindow)
+  }
+
+  override func mouseMoved(with event: NSEvent) {
+    activateForHover(at: event.locationInWindow)
+  }
+
   override func mouseDown(with event: NSEvent) {
     activateForPointerInteraction()
     super.mouseDown(with: event)
@@ -106,16 +159,25 @@ class ZoomableImageScrollView: NSScrollView {
 
   isolated deinit {
     if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
+    if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
   }
 
   override func viewDidMoveToWindow() {
     super.viewDidMoveToWindow()
     if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
     magnificationMonitor = nil
+    if let keyWindowObserver { NotificationCenter.default.removeObserver(keyWindowObserver) }
+    keyWindowObserver = nil
     endMagnification()
-    guard window != nil else { return }
+    guard let window else { return }
+    keyWindowObserver = NotificationCenter.default.addObserver(
+      forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
+    ) { [weak self] _ in
+      MainActor.assumeIsolated { self?.scheduleHoverActivation() }
+    }
+    scheduleHoverActivation()
     if PreviewGestureDiagnostics.isEnabled {
-      PreviewGestureDiagnostics.write("attached key=\(window?.isKeyWindow == true) active=\(NSApp.isActive)")
+      PreviewGestureDiagnostics.write("attached key=\(window.isKeyWindow) active=\(NSApp.isActive)")
       recordWindowState("attached")
     }
     // Keep the same AppKit gesture subscription in ordinary and diagnostic

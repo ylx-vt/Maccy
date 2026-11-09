@@ -14,4 +14,4 @@
 "FitImage" = "适配";
 "ZoomInImage" = "放大图片";
 "ZoomOutImage" = "缩小图片";
-"ImageZoomHint" = "先点击图片激活，再双指捏合缩放；双指滚动查看局部，双击图片恢复适配。";
+"ImageZoomHint" = "指针移入图片即可双指捏合缩放；双指滚动查看局部，双击图片恢复适配。";
