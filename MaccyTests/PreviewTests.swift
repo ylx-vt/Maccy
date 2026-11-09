@@ -5,28 +5,33 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct PreviewTests {
-  @Test("Magnify gesture deltas zoom in place and respect fit and maximum limits")
-  func nativeGestureMagnification() {
+  @Test("Hosting gesture uses cumulative scale without compounding and resets between pinches")
+  func hostingGestureMagnification() {
     let view = zoomPreview(NSImage(size: NSSize(width: 1200, height: 2400)))
     let fitted = view.fittedMagnification
     let frame = view.frame
-    let point = NSPoint(x: view.contentView.bounds.midX, y: view.contentView.bounds.midY)
-    view.magnify(by: 0.5, at: point)
+    view.updateMagnification(1.5, anchor: .center)
     #expect(abs(view.magnification - fitted * 1.5) < 0.0001)
     #expect(view.frame == frame)
-    view.magnify(by: -0.9, at: point)
+    view.updateMagnification(2, anchor: .center)
+    #expect(abs(view.magnification - fitted * 2) < 0.0001)
+    view.endMagnification()
+    view.updateMagnification(1.5, anchor: .center)
+    #expect(abs(view.magnification - fitted * 3) < 0.0001)
+    view.updateMagnification(0.01, anchor: .center)
     #expect(view.magnification == view.minMagnification)
-    view.magnify(by: 10000, at: point)
+    view.updateMagnification(10000, anchor: .center)
     #expect(view.magnification == view.maxMagnification)
-    view.magnify(by: .nan, at: point)
+    view.updateMagnification(.nan, anchor: .center)
+    view.updateMagnification(-1, anchor: .center)
     #expect(view.magnification == view.maxMagnification)
   }
 
-  @Test("Native preview enables pinch zoom and preserves the source image")
+  @Test("Native preview preserves source and zoom controls without a duplicate pinch handler")
   func nativePinchPreview() throws {
     let image = NSImage(size: NSSize(width: 1200, height: 2400))
     let view = zoomPreview(image)
-    #expect(view.allowsMagnification)
+    #expect(!view.allowsMagnification)
     #expect(view.hasHorizontalScroller && view.hasVerticalScroller)
     #expect((view.documentView as? NSImageView)?.image === image)
     #expect(abs(view.magnification - view.fittedMagnification) < 0.0001)

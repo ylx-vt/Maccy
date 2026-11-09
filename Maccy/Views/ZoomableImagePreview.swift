@@ -7,6 +7,12 @@ final class ImagePreviewZoom {
   func zoomIn() { scrollView?.zoom(by: 1.5) }
   func zoomOut() { scrollView?.zoom(by: 1 / 1.5) }
   func fit() { scrollView?.resetToFit() }
+
+  func updateMagnification(_ scale: CGFloat, anchor: UnitPoint) {
+    scrollView?.updateMagnification(scale, anchor: anchor)
+  }
+
+  func endMagnification() { scrollView?.endMagnification() }
 }
 
 struct ZoomableImagePreview: NSViewRepresentable {
@@ -34,6 +40,7 @@ class ZoomableImageScrollView: NSScrollView {
   private var lastViewportSize = NSSize.zero
   private var needsInitialFit = true
   private var magnificationMonitor: Any?
+  private var gestureStartMagnification: CGFloat?
   private(set) var fittedMagnification: CGFloat = 1
 
   override var mouseDownCanMoveWindow: Bool { false }
@@ -54,8 +61,9 @@ class ZoomableImageScrollView: NSScrollView {
     autohidesScrollers = true
     horizontalScrollElasticity = .none
     verticalScrollElasticity = .none
-    // AppKit handles trackpad magnification and keeps the gesture's focal point.
-    allowsMagnification = true
+    // SwiftUI owns pinch recognition in the hosting hierarchy; AppKit owns the
+    // image transform and scrolling. Disable its second, native pinch handler.
+    allowsMagnification = false
     minMagnification = 0.0001
     maxMagnification = 8
     imageView.imageScaling = .scaleProportionallyUpOrDown
@@ -75,34 +83,53 @@ class ZoomableImageScrollView: NSScrollView {
     super.viewDidMoveToWindow()
     if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
     magnificationMonitor = nil
-    guard window != nil else { return }
-    // SwiftUI's hosting responder can consume magnify events before AppKit's
-    // default scroll-view handler. Route only events inside this visible canvas;
-    // leave all gestures in the history list and other windows untouched.
-    magnificationMonitor = NSEvent.addLocalMonitorForEvents(matching: .magnify) { [weak self] event in
-      guard let self, let window = self.window, window === event.window,
-            self.allowsMagnification, !self.isHiddenOrHasHiddenAncestor else { return event }
-      let location = self.convert(event.locationInWindow, from: nil)
-      guard self.visibleRect.contains(location) else { return event }
-      self.magnify(with: event)
-      return nil
+    endMagnification()
+    guard window != nil, PreviewGestureDiagnostics.isEnabled else { return }
+    PreviewGestureDiagnostics.write("attached key=\(window?.isKeyWindow == true) active=\(NSApp.isActive)")
+    magnificationMonitor = NSEvent.addLocalMonitorForEvents(
+      matching: [.magnify, .beginGesture, .endGesture, .gesture, .scrollWheel]
+    ) { [weak self] event in
+      guard let self, let window = self.window else { return event }
+      // Gesture events need not carry a window or a mouse-event location.
+      let point = window.convertPoint(fromScreen: NSEvent.mouseLocation)
+      let inside = self.visibleRect.contains(self.convert(point, from: nil))
+      let sameWindow = event.window === window || (event.window == nil && window.isKeyWindow)
+      PreviewGestureDiagnostics.write(
+        "event=\(event.type.rawValue) sameWindow=\(sameWindow) nilWindow=\(event.window == nil) "
+          + "key=\(window.isKeyWindow) active=\(NSApp.isActive) inside=\(inside)"
+      )
+      return event
     }
   }
 
-  override func magnify(with event: NSEvent) {
-    magnify(by: event.magnification, at: contentView.convert(event.locationInWindow, from: nil))
+  func updateMagnification(_ scale: CGFloat, anchor: UnitPoint) {
+    guard scale.isFinite, scale > 0 else { return }
+    layoutSubtreeIfNeeded()
+    let start = gestureStartMagnification ?? magnification
+    gestureStartMagnification = start
+    let point = NSPoint(
+      x: contentView.bounds.minX + anchor.x * contentView.bounds.width,
+      y: contentView.bounds.minY + (contentView.isFlipped ? anchor.y : 1 - anchor.y) * contentView.bounds.height
+    )
+    let before = magnification
+    setMagnification(min(max(start * scale, minMagnification), maxMagnification), centeredAt: point)
+    PreviewGestureDiagnostics.write("swiftui-pinch scale=\(scale) before=\(before) after=\(magnification)")
   }
 
-  func magnify(by delta: CGFloat, at point: NSPoint) {
-    guard delta.isFinite, delta > -1 else { return }
-    layoutSubtreeIfNeeded()
-    let scale = min(max(magnification * (1 + delta), minMagnification), maxMagnification)
-    setMagnification(scale, centeredAt: point)
+  func endMagnification() {
+    gestureStartMagnification = nil
+  }
+
+  override func scrollWheel(with event: NSEvent) {
+    let before = contentView.bounds.origin
+    super.scrollWheel(with: event)
+    PreviewGestureDiagnostics.write("native-scroll moved=\(contentView.bounds.origin != before)")
   }
 
   func display(_ image: NSImage, identity: UUID) {
     guard imageIdentity != identity else { return }
     imageIdentity = identity
+    endMagnification()
     imageView.image = image
     imageView.setFrameSize(image.size)
     needsInitialFit = true
@@ -137,6 +164,7 @@ class ZoomableImageScrollView: NSScrollView {
   }
 
   func resetToFit() {
+    endMagnification()
     layoutSubtreeIfNeeded()
     applyFit()
   }
@@ -150,6 +178,26 @@ class ZoomableImageScrollView: NSScrollView {
       y: (imageView.frame.height - contentView.bounds.height) / 2
     ))
     reflectScrolledClipView(contentView)
+  }
+}
+
+// Opt-in, bounded local diagnostics. Never records images, text, app names, or
+// clipboard identifiers, and is inactive in ordinary launches and login items.
+private enum PreviewGestureDiagnostics {
+  static let isEnabled = CommandLine.arguments.contains("--preview-gesture-diagnostics")
+  private static var remaining = 500
+  private static let output: FileHandle? = {
+    guard isEnabled else { return nil }
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent("Maccy-preview-gesture.log")
+    guard FileManager.default.createFile(atPath: url.path, contents: nil,
+                                        attributes: [.posixPermissions: 0o600]) else { return nil }
+    return try? FileHandle(forWritingTo: url)
+  }()
+
+  static func write(_ message: String) {
+    guard let output, remaining > 0 else { return }
+    remaining -= 1
+    try? output.write(contentsOf: Data((message + "\n").utf8))
   }
 }
 

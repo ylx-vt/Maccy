@@ -57,3 +57,11 @@ xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
 
 安装前核验 `otool -L` 不含 Sparkle，沙盒开启且不带 `get-task-allow` 调试权限。
 原应用、历史和偏好备份保留在本机私有目录，不提交到 Git。自启使用应用内“登录时启动”。
+
+### 捏合排查
+
+已安装为日常版本，真实捏合仍在排查；按钮缩放已由用户确认有效。
+可在退出应用后用 `open -a /Applications/Maccy.app --args --preview-gesture-diagnostics`
+临时开启诊断。仅记录最多 500 条事件类型、命中状态和缩放数值，
+保存在应用沙盒临时目录的 `Maccy-preview-gesture.log`；不包含剪贴板内容和条目身份。
+普通启动和登录自启不启用诊断，也不监控其他应用的事件。
