@@ -31,6 +31,15 @@ struct HistoryItemView: View {
   }
 
   private func performSelect() {
+    #if DEBUG
+    // The isolated visual demo acts as a gallery; clicking a fixture must not
+    // replace the system clipboard or be captured by the installed Maccy.
+    if AppDelegate.isPreviewDemo {
+      appState.navigator.isKeyboardNavigating = false
+      appState.navigator.selectWithoutScrolling(id: item.id)
+      return
+    }
+    #endif
     if NSEvent.modifierFlags.contains(.command) && appState.multiSelectionEnabled {
       appState.navigator.addToSelection(item: item)
     } else {

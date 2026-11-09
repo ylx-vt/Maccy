@@ -4,7 +4,12 @@ import Sparkle
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
-  nonisolated static let isTesting = CommandLine.arguments.contains("enable-testing")
+  #if DEBUG
+  nonisolated static let isPreviewDemo = Bundle.main.bundleIdentifier == "today.findspring.MaccyPreview"
+  #else
+  nonisolated static let isPreviewDemo = false
+  #endif
+  nonisolated static let isTesting = CommandLine.arguments.contains("enable-testing") || isPreviewDemo
   var panel: FloatingPanel<ContentView>!
 
   @objc
@@ -118,6 +123,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     ) {
       ContentView()
     }
+
+    #if DEBUG
+    if Self.isTesting && (Self.isPreviewDemo || CommandLine.arguments.contains("preview-fixtures")) {
+      Task { await openPreviewFixtures() }
+    }
+    #endif
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -231,3 +242,39 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 }
+
+#if DEBUG
+extension AppDelegate {
+  // Opt-in visual QA: synthetic fixtures stay in the existing in-memory test
+  // store. No clipboard writes or reads from the user's history are required.
+  private func openPreviewFixtures() async {
+    guard let directory = Bundle.main.resourceURL?.appending(path: "PreviewFixtures"),
+          let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+          ) else { return }
+    Defaults[.ignoreEvents] = true
+    Defaults[.windowSize] = NSSize(width: 390, height: 650)
+    Defaults[.previewWidth] = 360
+    Defaults[.previewDelay] = 200
+    Defaults[.showApplicationIcons] = true
+    AppState.shared.preview.contentWidth = 390
+    AppState.shared.preview.slideoutWidth = 360
+    let files = urls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    for (index, url) in files.enumerated() {
+      guard let data = try? Data(contentsOf: url) else { continue }
+      let isImage = url.pathExtension == "png"
+      let item = HistoryItem(contents: [HistoryItemContent(
+        type: (isImage ? NSPasteboard.PasteboardType.png : .string).rawValue,
+        value: data
+      )])
+      item.title = isImage ? url.deletingPathExtension().lastPathComponent : String(decoding: data, as: UTF8.self)
+      item.application = Bundle.main.bundleIdentifier
+      item.lastCopiedAt = Date.now.addingTimeInterval(-Double(index))
+      try? History.shared.insertIntoStorage(item)
+    }
+    try? await History.shared.load()
+    panel.open(height: 650, at: .center)
+    AppState.shared.navigator.highlightFirst()
+  }
+}
+#endif

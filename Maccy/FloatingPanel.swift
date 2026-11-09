@@ -89,6 +89,9 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     let finalHeight = max(min(height, size.height), miniumHeight)
     setContentSize(NSSize(width: finalWidth, height: finalHeight))
     setFrameOrigin(popupPosition.origin(size: frame.size, statusBarButton: statusBarButton))
+    if let screen = screen?.visibleFrame {
+      setFrame(SlideoutController.constrainedFrame(frame, to: screen), display: false)
+    }
     orderFrontRegardless()
     makeKey()
     isPresented = true
@@ -105,10 +108,14 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     newSize.height = newHeight
     var newOrigin = frame.origin
     newOrigin.y += (frame.height - newSize.height)
+    var newFrame = NSRect(origin: newOrigin, size: newSize)
+    if let screen = screen?.visibleFrame {
+      newFrame = SlideoutController.constrainedFrame(newFrame, to: screen)
+    }
 
     NSAnimationContext.runAnimationGroup { (context) in
       context.duration = 0.2
-      animator().setFrame(NSRect(origin: newOrigin, size: newSize), display: true)
+      animator().setFrame(newFrame, display: true)
     }
   }
 
@@ -209,6 +216,10 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
   // Close automatically when out of focus, e.g. outside click.
   override func resignKey() {
     super.resignKey()
+    // Keep the isolated visual QA demo available while inspecting other apps.
+    #if DEBUG
+    if AppDelegate.isPreviewDemo { return }
+    #endif
     // Don't hide while a modal interaction from this panel is active.
     if NSApp.alertWindow == nil && !AppState.shared.suppressPopupAutoClose {
       close()

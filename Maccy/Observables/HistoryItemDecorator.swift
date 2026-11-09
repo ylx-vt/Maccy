@@ -12,7 +12,13 @@ class HistoryItemDecorator: Identifiable, Hashable, HasVisibility {
     return lhs.id == rhs.id
   }
 
-  static var previewImageSize: NSSize { NSScreen.forPopup?.visibleFrame.size ?? NSSize(width: 2048, height: 1536) }
+  static var previewImageSize: NSSize {
+    let scale = NSScreen.forPopup?.backingScaleFactor ?? 2
+    return NSSize(
+      width: ImagePreviewSizing.maximumSize.width * scale,
+      height: ImagePreviewSizing.maximumSize.height * scale
+    )
+  }
   static var thumbnailImageSize: NSSize { NSSize(width: 340, height: Defaults[.imageMaxHeight]) }
 
   let id = UUID()

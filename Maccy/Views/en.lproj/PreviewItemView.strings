@@ -11,3 +11,7 @@
 "ClosePreview" = "Press {previewKey} to hide preview.";
 "CopyExtractedText" = "Copy extracted text.";
 "EditItem" = "Edit item";
+"FitImage" = "Fit";
+"ZoomInImage" = "Zoom in";
+"ZoomOutImage" = "Zoom out";
+"ImageZoomHint" = "Pinch to zoom, scroll to pan, or double-click the image to fit.";

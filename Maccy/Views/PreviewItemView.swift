@@ -6,12 +6,24 @@ struct PreviewItemView: View {
   private static let largeTextThreshold = 1_000
 
   var item: HistoryItemDecorator
+  @State private var zoom = ImagePreviewZoom()
 
   @ViewBuilder
-  func previewImage(content: () -> some View) -> some View {
-    content()
-      .aspectRatio(contentMode: .fit)
-      .clipShape(.rect(cornerRadius: 5))
+  func previewImage(content: @escaping () -> some View) -> some View {
+    // The image (and its loading placeholder) must accept the sidebar's proposal,
+    // rather than contributing a screen-sized intrinsic size to the window.
+    GeometryReader { geometry in
+      let size = ImagePreviewSizing.fittedSize(
+        item.item.image?.size ?? ImagePreviewSizing.maximumSize,
+        in: geometry.size
+      )
+      content()
+        .frame(width: size.width, height: size.height)
+        .clipShape(.rect(cornerRadius: 5))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    .frame(maxHeight: ImagePreviewSizing.maximumSize.height)
+    .accessibilityIdentifier("image-preview")
   }
 
   var body: some View {
@@ -21,18 +33,35 @@ struct PreviewItemView: View {
           return await item.asyncGetPreviewImage()
         } content: { image in
           if let image = image {
-            previewImage {
-              Image(nsImage: image)
-                .resizable()
+            VStack(spacing: 6) {
+              GeometryReader { geometry in
+                ZoomableImagePreview(image: item.item.image ?? image, identity: item.id, zoom: zoom)
+                  .frame(width: min(geometry.size.width, ImagePreviewSizing.maximumSize.width))
+                  .frame(maxWidth: .infinity, maxHeight: .infinity)
+              }
+              .frame(maxHeight: ImagePreviewSizing.maximumSize.height)
+              .clipShape(.rect(cornerRadius: 5))
+
+              HStack(spacing: 12) {
+                Spacer()
+                Button(action: zoom.zoomOut) { Image(systemName: "minus.magnifyingglass") }
+                  .accessibilityLabel(Text("ZoomOutImage", tableName: "PreviewItemView"))
+                  .accessibilityIdentifier("zoom-out-image")
+                Button(action: zoom.fit) { Text("FitImage", tableName: "PreviewItemView") }
+                  .accessibilityIdentifier("fit-image")
+                Button(action: zoom.zoomIn) { Image(systemName: "plus.magnifyingglass") }
+                  .accessibilityLabel(Text("ZoomInImage", tableName: "PreviewItemView"))
+                  .accessibilityIdentifier("zoom-in-image")
+                Spacer()
+              }
+              .buttonStyle(.borderless)
+              .excludeFromWindowMovableByBackground()
             }
+            .help(Text("ImageZoomHint", tableName: "PreviewItemView"))
           } else {
             previewImage {
               ZStack {
                 Color.gray.opacity(0.3)
-                  .frame(
-                    idealWidth: HistoryItemDecorator.previewImageSize.width,
-                    idealHeight: HistoryItemDecorator.previewImageSize.height
-                  )
                 Image(systemName: "photo.badge.exclamationmark")
                   .symbolRenderingMode(.multicolor)
                   .frame(alignment: .center)
@@ -43,10 +72,6 @@ struct PreviewItemView: View {
           previewImage {
             ZStack {
               Color.gray.opacity(0.3)
-                .frame(
-                  idealWidth: HistoryItemDecorator.previewImageSize.width,
-                  idealHeight: HistoryItemDecorator.previewImageSize.height
-                )
               ProgressView()
                 .frame(alignment: .center)
             }
@@ -114,5 +139,20 @@ struct PreviewItemView: View {
       }
     }
     .controlSize(.small)
+  }
+}
+
+nonisolated enum ImagePreviewSizing {
+  static let maximumSize = NSSize(width: 400, height: 480)
+
+  static func fittedSize(_ image: NSSize, in available: NSSize) -> NSSize {
+    guard image.width > 0, image.height > 0,
+          available.width > 0, available.height > 0 else { return .zero }
+    let scale = min(
+      1,
+      min(available.width, maximumSize.width) / image.width,
+      min(available.height, maximumSize.height) / image.height
+    )
+    return NSSize(width: image.width * scale, height: image.height * scale)
   }
 }

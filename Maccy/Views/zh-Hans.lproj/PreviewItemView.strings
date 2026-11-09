@@ -11,3 +11,7 @@
 "Size" = "文件大小:";
 "CopyExtractedText" = "复制提取的文本。";
 "EditItem" = "编辑项目";
+"FitImage" = "适配";
+"ZoomInImage" = "放大图片";
+"ZoomOutImage" = "缩小图片";
+"ImageZoomHint" = "双指捏合缩放，双指滚动查看局部，双击图片恢复适配。";

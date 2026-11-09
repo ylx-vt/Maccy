@@ -102,6 +102,36 @@ class SlideoutController {
     return AppState.shared.appDelegate?.panel
   }
 
+  var displayedContentWidth: CGFloat {
+    widths(in: nswindow?.screen?.visibleFrame.width ?? .greatestFiniteMagnitude,
+           previewVisible: state != .closed).content
+  }
+
+  var displayedSlideoutWidth: CGFloat {
+    widths(in: nswindow?.screen?.visibleFrame.width ?? .greatestFiniteMagnitude,
+           previewVisible: true).preview
+  }
+
+  // Fit the two columns without overwriting the user's saved widths when moving
+  // between displays. The list always retains its own space beside the preview.
+  func widths(in availableWidth: CGFloat, previewVisible: Bool) -> (content: CGFloat, preview: CGFloat) {
+    let width = max(0, availableWidth)
+    guard previewVisible else { return (min(contentWidth, width), 0) }
+    let reservedPreview = min(minimumSlideoutWidth, width / 2)
+    let content = min(contentWidth, width - reservedPreview)
+    return (content, min(slideoutWidth, width - content))
+  }
+
+  static func constrainedFrame(_ frame: NSRect, to screen: NSRect) -> NSRect {
+    let size = NSSize(width: min(frame.width, screen.width), height: min(frame.height, screen.height))
+    return NSRect(
+      x: min(max(frame.minX, screen.minX), screen.maxX - size.width),
+      y: min(max(frame.minY, screen.minY), screen.maxY - size.height),
+      width: size.width,
+      height: size.height
+    )
+  }
+
   private var windowAnimationOrigin: CGPoint?
   private var windowAnimationOriginBaseState: SlideoutState = .closed
 
@@ -125,22 +155,24 @@ class SlideoutController {
   }
 
   func computePlacement(window: NSWindow, for size: NSSize) -> SlideoutPlacement {
-    guard let screen = window.screen?.frame else { return placement }
+    guard let screen = window.screen?.visibleFrame else { return placement }
     let windowFrame = window.frame
-    if windowFrame.minX + size.width > screen.maxX {
-      return .left
-    } else {
+    if windowFrame.minX + size.width <= screen.maxX {
       return .right
     }
+    if windowFrame.maxX - size.width >= screen.minX {
+      return .left
+    }
+    return screen.maxX - windowFrame.maxX >= windowFrame.minX - screen.minX ? .right : .left
   }
 
   func computeSizeWithPreview(_ size: NSSize, state newState: SlideoutState) -> NSSize {
     var newSize = size
-    if newState.isOpen {
-      newSize.width += slideoutWidth
-    }
+    let screen = nswindow?.screen?.visibleFrame
+    let layout = widths(in: screen?.width ?? .greatestFiniteMagnitude, previewVisible: newState.isOpen)
+    newSize.width = layout.content + layout.preview
     let popup = AppState.shared.popup
-    newSize.height = popup.preferredHeight(for: popup.height)
+    newSize.height = min(popup.preferredHeight(for: popup.height), screen?.height ?? .greatestFiniteMagnitude)
     return newSize
   }
 
@@ -176,10 +208,10 @@ class SlideoutController {
 
           if placement == .left {
             if windowAnimationOriginBaseState == .closed && state.isOpen {
-              newOrigin.x -= slideoutWidth
+              newOrigin.x -= displayedSlideoutWidth
             } else if windowAnimationOriginBaseState == .open
               && !state.isOpen {
-              newOrigin.x += slideoutWidth
+              newOrigin.x += displayedSlideoutWidth
             }
             // Otherwise the base is the desired position
           }
@@ -190,10 +222,11 @@ class SlideoutController {
             }
           }
           context.duration = Self.animationDuration
-          window.animator().setFrame(
-            NSRect(origin: newOrigin, size: newSize),
-            display: true
-          )
+          var frame = NSRect(origin: newOrigin, size: newSize)
+          if let screen = window.screen?.visibleFrame {
+            frame = Self.constrainedFrame(frame, to: screen)
+          }
+          window.animator().setFrame(frame, display: true)
         }
       }
     } completion: {
