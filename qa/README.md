@@ -19,16 +19,18 @@
 
 ```sh
 xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Debug \
-  -derivedDataPath /tmp/maccy-preview-qa -destination 'platform=macOS' \
+  -derivedDataPath /tmp/maccy-preview-qa.noindex -destination 'platform=macOS' \
   -only-testing:MaccyTests/PreviewTests CODE_SIGNING_ALLOWED=NO test
-python3 qa/prepare-preview-demo.py /tmp/maccy-preview-qa/Build/Products/Debug/Maccy.app
+python3 qa/prepare-preview-demo.py /tmp/maccy-preview-qa.noindex/Build/Products/Debug/Maccy.app
 ```
 
-演示程序：`qa/artifacts/Maccy预览测试.app`。打包脚本要求 Debug 构建且拒绝覆盖已有演示包。
+演示程序：`qa/artifacts/Applications.noindex/Maccy预览测试.app`。打包脚本要求 Debug 构建且拒绝覆盖已有演示包。
 该包使用独立 bundle ID、测试偏好和内存数据库，仅加载生成的测试图片及文本。
 演示包点击测试条目只切换展示，不写入系统剪贴板。日常版沿用历史条目的复制动作；预览图片点击用于激活缩放。
 演示包为便于查看而在切换应用时保留窗口；正式应用保持原来的失焦关闭行为。
 演示包按需由当前源码生成；本次实机验收使用上述日常安装包。
+测试后注销并删除演示、诊断和临时构建应用；应用备份仅压缩归档。
+具体收尾要求见 `DEVELOPMENT.md` 的“安装与测试收尾”。
 
 11 组定向测试覆盖：横图/竖图/长图/小图比例、较矮容器与空尺寸、原始数据保持、窄屏双栏宽度、屏幕边缘与负坐标副屏、缩放控制与复位、长图滚动、换图重置及刷新保持缩放、调整容器大小、捏合累计倍率、会话重置和缩放上下限，以及原生控件拥有键盘焦点时的 Esc 退出。
 原生界面核查使用 3840×2160、1200×2400、800×8000、48×48、1600×1600、8000×500 的合成图片。

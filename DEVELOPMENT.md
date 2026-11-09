@@ -31,9 +31,9 @@ git pull --ff-only
 
 ```sh
 xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Debug \
-  -derivedDataPath /tmp/maccy-preview-qa -destination 'platform=macOS' \
+  -derivedDataPath /tmp/maccy-preview-qa.noindex -destination 'platform=macOS' \
   -only-testing:MaccyTests/PreviewTests CODE_SIGNING_ALLOWED=NO test
-python3 qa/prepare-preview-demo.py /tmp/maccy-preview-qa/Build/Products/Debug/Maccy.app
+python3 qa/prepare-preview-demo.py /tmp/maccy-preview-qa.noindex/Build/Products/Debug/Maccy.app
 ```
 
 独立演示、验收边界和截图说明见 [qa/README.md](qa/README.md)。
@@ -48,7 +48,7 @@ python3 qa/prepare-preview-demo.py /tmp/maccy-preview-qa/Build/Products/Debug/Ma
 
 ```sh
 xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
-  -derivedDataPath /tmp/maccy-release -destination 'platform=macOS' \
+  -derivedDataPath /tmp/maccy-release.noindex -destination 'platform=macOS' \
   SWIFT_ACTIVE_COMPILATION_CONDITIONS=LOCAL_FORK \
   OTHER_LDFLAGS=-Wl,-dead_strip_dylibs CODE_SIGNING_ALLOWED=YES \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
@@ -57,6 +57,16 @@ xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
 
 安装前核验 `otool -L` 不含 Sparkle，沙盒开启且不带 `get-task-allow` 调试权限。
 原应用、历史和偏好备份保留在本机私有目录，不提交到 Git。自启使用应用内“登录时启动”。
+
+### 安装与测试收尾
+
+日常只保留 `/Applications/Maccy.app` 一个可启动副本。旧应用备份使用 ZIP 归档，
+不在备份目录堆放 `.app`；历史数据库与偏好备份单独保留。
+构建目录和演示包目录使用 `.noindex` 后缀，避免进入系统搜索。
+测试完成后注销并删除演示、诊断和临时构建应用；注销仅针对对应路径，
+不重建其他应用的 Launch Services 或 Spotlight 数据库。
+最后核对 Spotlight 中 `org.p0deje.Maccy` 仅返回正式安装路径，
+Launch Services 中没有测试或旧版登记，并确认当前进程、自启和安装包未被替换。
 
 ### 图片交互与诊断
 
