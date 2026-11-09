@@ -60,7 +60,8 @@ xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
 
 ### 捏合排查
 
-已安装为日常版本，按钮缩放、双指滚动和点击图片后的双指捏合均已由用户实机确认。
+按钮缩放、双指滚动和点击图片后的双指捏合已在诊断启动中由用户实机确认。
+普通启动曾因把事件监听与诊断开关绑定而缺少手势订阅；现将订阅与日志分离，普通启动保留同样的事件接收路径。
 独立对照复现了透明背景配合不透明窗口标记时丢失捏合事件的问题；
 将 `FloatingPanel.isOpaque` 设为 `false` 后，在保持透明玻璃背景的对照中恢复捏合。
 图片使用 `NSMagnificationGestureRecognizer` 识别捏合；日常版实测先点击大图激活后可缩放，

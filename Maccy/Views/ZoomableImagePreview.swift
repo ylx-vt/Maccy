@@ -104,12 +104,17 @@ class ZoomableImageScrollView: NSScrollView {
     if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
     magnificationMonitor = nil
     endMagnification()
-    guard window != nil, PreviewGestureDiagnostics.isEnabled else { return }
-    PreviewGestureDiagnostics.write("attached key=\(window?.isKeyWindow == true) active=\(NSApp.isActive)")
-    recordWindowState("attached")
+    guard window != nil else { return }
+    if PreviewGestureDiagnostics.isEnabled {
+      PreviewGestureDiagnostics.write("attached key=\(window?.isKeyWindow == true) active=\(NSApp.isActive)")
+      recordWindowState("attached")
+    }
+    // Keep the same AppKit gesture subscription in ordinary and diagnostic
+    // launches. Logging is optional; event delivery must not depend on it.
     magnificationMonitor = NSEvent.addLocalMonitorForEvents(
       matching: [.magnify, .beginGesture, .endGesture, .gesture, .scrollWheel]
     ) { [weak self] event in
+      guard PreviewGestureDiagnostics.isEnabled else { return event }
       guard let self, let window = self.window else { return event }
       // Gesture events need not carry a window or a mouse-event location.
       let point = window.convertPoint(fromScreen: NSEvent.mouseLocation)
