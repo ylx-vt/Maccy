@@ -2,5 +2,12 @@
 "FirstCopyTime" = "Pirmās kopēšanas laiks:";
 "LastCopyTime" = "Pēdējās kopēšanas laiks:";
 "NumberOfCopies" = "Kopiju skaits:";
-"PinKey" = "Nospiediet {pinKey}, lai piespraust vai atspraust.";
+"PinKey" = "Nospiediet {pinKey}, lai piespraust.";
+"UnpinKey" = "Nospiediet {pinKey}, lai atspraust.";
 "DeleteKey" = "Nospiediet {deleteKey}, lai dzēstu.";
+"OpenPreview" = "Nospiediet {previewKey}, lai parādītu priekšskatījumu.";
+"ClosePreview" = "Nospiediet {previewKey}, lai paslēptu priekšskatījumu.";
+"Dimensions" = "Izmēri:";
+"Size" = "Lielums:";
+"CopyExtractedText" = "Kopēt izgūto tekstu.";
+"EditItem" = "Rediģēt vienumu";

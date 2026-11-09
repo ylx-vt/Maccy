@@ -1,4 +1,8 @@
 "Title" = "Bloccati";
 "Key" = "Chiave";
 "Alias" = "Titolo";
-"PinCustomizationDescription" = "Puoi personalizzare il titolo e la combinazione di tasti per ogni elemento bloccato\nPer editarlo, fai un doppio click su di esso e inserisci il nuovo valore.";
+"Content" = "Contenuto";
+"ContentIsNotText" = "Contenuto non modificabile (immagine o file)";
+"ParagraphsTooLongToEdit" = "Il testo contiene paragrafi troppo lunghi per essere modificati.";
+"RichTextEditWarning" = "La modifica elimina tutta la formattazione.";
+"PinCustomizationDescription" = "È possibile personalizzare il tasto di scelta rapida, il titolo e il contenuto di qualsiasi elemento appuntato.\nPer modificarlo, fare doppio clic sull'elemento e inserire un nuovo valore.";

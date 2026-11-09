@@ -1,3 +1,4 @@
+#if !LOCAL_FORK
 import Sparkle
 
 @Observable
@@ -22,12 +23,14 @@ class SoftwareUpdater {
     automaticallyChecksForUpdatesObservation = updater.observe(
       \.automaticallyChecksForUpdates,
       options: [.initial, .new, .old]
-    ) { [unowned self] updater, change in
-      guard change.newValue != change.oldValue else {
+    ) { [unowned self] _, change in
+      guard change.newValue != change.oldValue, let newValue = change.newValue else {
         return
       }
 
-      self.automaticallyChecksForUpdates = updater.automaticallyChecksForUpdates
+      MainActor.assumeIsolated {
+        self.automaticallyChecksForUpdates = newValue
+      }
     }
   }
 
@@ -35,3 +38,4 @@ class SoftwareUpdater {
     updater.checkForUpdates()
   }
 }
+#endif

@@ -1,9 +1,17 @@
 import Defaults
 import KeyboardShortcuts
+#if !LOCAL_FORK
 import Sparkle
+#endif
 import SwiftUI
 
 class AppDelegate: NSObject, NSApplicationDelegate {
+  #if DEBUG
+  nonisolated static let isPreviewDemo = Bundle.main.bundleIdentifier == "today.findspring.MaccyPreview"
+  #else
+  nonisolated static let isPreviewDemo = false
+  #endif
+  nonisolated static let isTesting = CommandLine.arguments.contains("enable-testing") || isPreviewDemo
   var panel: FloatingPanel<ContentView>!
 
   @objc
@@ -17,6 +25,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     return statusItem
   }()
 
+  // Base accessibility label for the status item; kept separate from the optional
+  // dynamic `title` (recent copy text) so VoiceOver always announces something
+  // meaningful even when that preference is off or the app is disabled.
+  private func updateStatusItemAccessibilityLabel() {
+    var accessibilityLabel = NSLocalizedString("status_item_accessibility_label", comment: "")
+    if isStatusItemDisabled {
+      accessibilityLabel += " — \(NSLocalizedString("status_item_disabled_accessibility_suffix", comment: ""))"
+    }
+    statusItem.button?.setAccessibilityLabel(accessibilityLabel)
+  }
+
   private var isStatusItemDisabled: Bool {
     Defaults[.ignoreEvents] || Defaults[.enabledPasteboardTypes].isEmpty
   }
@@ -25,12 +44,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillFinishLaunching(_ notification: Notification) { // swiftlint:disable:this function_body_length
     #if DEBUG
-    if CommandLine.arguments.contains("enable-testing") {
+    if Self.isTesting {
+      #if !LOCAL_FORK
       SPUUpdater(hostBundle: Bundle.main,
                  applicationBundle: Bundle.main,
                  userDriver: SPUStandardUserDriver(hostBundle: Bundle.main, delegate: nil),
                  delegate: nil)
       .automaticallyChecksForUpdates = false
+      #endif
+      // Start from a clean slate for the isolated testing preferences.
+      UserDefaults.standard.removePersistentDomain(forName: Defaults.Keys.testingSuiteName)
     }
     #endif
 
@@ -75,15 +98,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       }
     }
 
+    updateStatusItemAccessibilityLabel()
+
     Task {
       for await _ in Defaults.updates(.ignoreEvents) {
         statusItem.button?.appearsDisabled = isStatusItemDisabled
+        updateStatusItemAccessibilityLabel()
       }
     }
 
     Task {
       for await _ in Defaults.updates(.enabledPasteboardTypes) {
         statusItem.button?.appearsDisabled = isStatusItemDisabled
+        updateStatusItemAccessibilityLabel()
       }
     }
   }
@@ -95,10 +122,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     panel = FloatingPanel(
       contentRect: NSRect(origin: .zero, size: Defaults[.windowSize]),
       identifier: Bundle.main.bundleIdentifier ?? "org.p0deje.Maccy",
-      statusBarButton: statusItem.button
+      statusBarButton: statusItem.button,
+      onClose: { AppState.shared.popup.reset() }
     ) {
       ContentView()
     }
+
+    #if DEBUG
+    if Self.isTesting && (Self.isPreviewDemo || CommandLine.arguments.contains("preview-fixtures")) {
+      Task { await openPreviewFixtures() }
+    }
+    #endif
   }
 
   func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -112,8 +146,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
   }
 
+  private func ensureMigration(key: String, _ action: () -> Void) {
+    if Defaults[.migrations][key] != true {
+      action()
+      Defaults[.migrations][key] = true
+    }
+  }
+
+  @MainActor
   private func migrateUserDefaults() {
-    if Defaults[.migrations]["2024-07-01-version-2"] != true {
+    ensureMigration(key: "2024-07-01-version-2") {
       // Start 2.x from scratch.
       Defaults.reset(.migrations)
 
@@ -124,8 +166,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       UserDefaults.standard.removeObject(forKey: "hideFooter")
       UserDefaults.standard.removeObject(forKey: "hideSearch")
       UserDefaults.standard.removeObject(forKey: "hideTitle")
+    }
 
-      Defaults[.migrations]["2024-07-01-version-2"] = true
+    ensureMigration(key: "2025-07-04-add-jpeg-heic") {
+      var types = Defaults[.enabledPasteboardTypes]
+      if !types.isDisjoint(with: StorageType.images.types) {
+        types.formUnion(StorageType.images.types)
+      }
+      Defaults[.enabledPasteboardTypes] = types
+    }
+
+    ensureMigration(key: "2026-08-12-cleanup-orphaned-history-item-contents") {
+      _ = try? Storage.shared.cleanupOrphanedContents()
+    }
+
+    ensureMigration(key: "2026-08-31-sanitize-history-item-titles") {
+      _ = try? Storage.shared.sanitizeTitles()
+    }
+
+    ensureMigration(key: "2026-09-15-remove-unpersistable-contents") {
+      _ = try? Storage.shared.removeUnpersistableContents()
     }
 
     // The following defaults are not used in Maccy 2.x
@@ -139,18 +199,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
   @objc
   private func performStatusItemClick() {
-    if let event = NSApp.currentEvent {
-      let modifierFlags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    let modifierFlags = (NSApp.currentEvent?.modifierFlags ?? [])
+      .union(NSEvent.modifierFlags)
+      .intersection(.deviceIndependentFlagsMask)
 
-      if modifierFlags.contains(.option) {
-        Defaults[.ignoreEvents].toggle()
+    if modifierFlags.contains(.option) {
+      Defaults[.ignoreEvents].toggle()
 
-        if modifierFlags.contains(.shift) {
-          Defaults[.ignoreOnlyNextEvent] = Defaults[.ignoreEvents]
-        }
-
-        return
+      if modifierFlags.contains(.shift) {
+        Defaults[.ignoreOnlyNextEvent] = Defaults[.ignoreEvents]
       }
+
+      return
     }
 
     panel.toggle(height: AppState.shared.popup.height, at: .statusItem)
@@ -170,7 +230,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   private func disableUnusedGlobalHotkeys() {
-    let names: [KeyboardShortcuts.Name] = [.delete, .pin]
+    let names: [KeyboardShortcuts.Name] = [.delete, .pin, .togglePreview]
     KeyboardShortcuts.disable(names)
 
     NotificationCenter.default.addObserver(
@@ -178,9 +238,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
       object: nil,
       queue: nil
     ) { notification in
-      if let name = notification.userInfo?["name"] as? KeyboardShortcuts.Name, names.contains(name) {
+      guard let name = notification.userInfo?["name"] as? KeyboardShortcuts.Name,
+            names.contains(name) else { return }
+      MainActor.assumeIsolated {
         KeyboardShortcuts.disable(name)
       }
     }
   }
 }
+
+#if DEBUG
+extension AppDelegate {
+  // Opt-in visual QA: synthetic fixtures stay in the existing in-memory test
+  // store. No clipboard writes or reads from the user's history are required.
+  private func openPreviewFixtures() async {
+    guard let directory = Bundle.main.resourceURL?.appending(path: "PreviewFixtures"),
+          let urls = try? FileManager.default.contentsOfDirectory(
+            at: directory, includingPropertiesForKeys: nil
+          ) else { return }
+    Defaults[.ignoreEvents] = true
+    Defaults[.windowSize] = NSSize(width: 390, height: 650)
+    Defaults[.previewWidth] = 360
+    Defaults[.previewDelay] = 200
+    Defaults[.showApplicationIcons] = true
+    AppState.shared.preview.contentWidth = 390
+    AppState.shared.preview.slideoutWidth = 360
+    let files = urls.sorted { $0.lastPathComponent < $1.lastPathComponent }
+    for (index, url) in files.enumerated() {
+      guard let data = try? Data(contentsOf: url) else { continue }
+      let isImage = url.pathExtension == "png"
+      let item = HistoryItem(contents: [HistoryItemContent(
+        type: (isImage ? NSPasteboard.PasteboardType.png : .string).rawValue,
+        value: data
+      )])
+      item.title = isImage ? url.deletingPathExtension().lastPathComponent : String(decoding: data, as: UTF8.self)
+      item.application = Bundle.main.bundleIdentifier
+      item.lastCopiedAt = Date.now.addingTimeInterval(-Double(index))
+      try? History.shared.insertIntoStorage(item)
+    }
+    try? await History.shared.load()
+    panel.open(height: 650, at: .center)
+    AppState.shared.navigator.highlightFirst()
+  }
+}
+#endif

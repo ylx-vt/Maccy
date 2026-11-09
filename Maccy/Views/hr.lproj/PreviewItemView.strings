@@ -2,5 +2,12 @@
 "FirstCopyTime" = "Vrijeme prve kopije:";
 "LastCopyTime" = "Vrijeme zadnje kopije:";
 "NumberOfCopies" = "Broj kopija:";
-"PinKey" = "Prikvači/otkvači pomoću tipki {pinKey}.";
+"PinKey" = "Prikvači pomoću tipki {pinKey}.";
+"UnpinKey" = "Pritisnite {pinKey} za otkvačivanje.";
 "DeleteKey" = "Izbriši pomoću tipki {deleteKey}.";
+"OpenPreview" = "Pritisnite {previewKey} za prikaz pregleda.";
+"ClosePreview" = "Pritisnite {previewKey} za skrivanje pregleda.";
+"Dimensions" = "Dimenzije:";
+"Size" = "Veličina:";
+"CopyExtractedText" = "Kopiraj izdvojeni tekst.";
+"EditItem" = "Uredi stavku";

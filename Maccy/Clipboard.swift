@@ -29,6 +29,10 @@ class Clipboard {
     .concealed,
     .transient
   ]
+  private let unpersistableTypes: Set<NSPasteboard.PasteboardType> = [
+    .appleWebArchive,
+    .safariWebArchve
+  ]
 
   private var enabledTypes: Set<NSPasteboard.PasteboardType> { Defaults[.enabledPasteboardTypes] }
   private var disabledTypes: Set<NSPasteboard.PasteboardType> { supportedTypes.subtracting(enabledTypes) }
@@ -62,10 +66,18 @@ class Clipboard {
     start()
   }
 
+  func isPersistable(_ type: NSPasteboard.PasteboardType) -> Bool {
+    return !unpersistableTypes.contains(type) &&
+             !type.rawValue.hasPrefix(microsoftSourcePrefix) &&
+             !type.rawValue.hasPrefix(dynamicTypePrefix)
+  }
+
   @MainActor
-  func copy(_ string: String) {
+  func copyInMaccy(_ string: String) {
     pasteboard.clearContents()
     pasteboard.setString(string, forType: .string)
+    pasteboard.setString(NSPasteboard.PasteboardType.fromMaccy.rawValue, forType: .source)
+    sync()
     checkForChangesInPasteboard()
   }
 
@@ -77,15 +89,7 @@ class Clipboard {
     var contents = item.contents
 
     if removeFormatting {
-      let stringContents = contents.filter({
-        NSPasteboard.PasteboardType($0.type) == .string
-      })
-
-      // If there is no string representation of data,
-      // behave like we didn't have to remove formatting.
-      if !stringContents.isEmpty {
-        contents = stringContents
-      }
+      contents = clearFormatting(contents)
     }
 
     for content in contents {
@@ -106,6 +110,8 @@ class Clipboard {
     pasteboard.writeObjects(fileURLItems)
 
     pasteboard.setString("", forType: .fromMaccy)
+    pasteboard.setString(item.application ?? "", forType: .source)
+    sync()
 
     Task {
       Notifier.notify(body: item.title, sound: .knock)
@@ -152,12 +158,18 @@ class Clipboard {
 
   @objc
   @MainActor
-  func checkForChangesInPasteboard() {
+  func checkForChangesInPasteboard() { // swiftlint:disable:this cyclomatic_complexity
     guard pasteboard.changeCount != changeCount else {
       return
     }
 
     changeCount = pasteboard.changeCount
+
+    if pasteboard.pasteboardItems?.contains(where: { $0.types.contains(.fromMaccy) }) != true {
+      // External copy occurred. Stop the current paste stack.
+      // Maybe queue it into the paste stack? Configurable behaviour?
+      AppState.shared.history.interruptPasteStack()
+    }
 
     if Defaults[.ignoreEvents] {
       if Defaults[.ignoreOnlyNextEvent] {
@@ -196,8 +208,7 @@ class Clipboard {
 
       types = types
         .subtracting(disabledTypes)
-        .filter { !$0.rawValue.starts(with: dynamicTypePrefix) }
-        .filter { !$0.rawValue.starts(with: microsoftSourcePrefix) }
+        .filter(isPersistable)
 
       // Avoid reading Microsoft Word links from bookmarks and cross-references.
       // https://github.com/p0deje/Maccy/issues/613
@@ -215,10 +226,13 @@ class Clipboard {
       return
     }
 
-    let historyItem = HistoryItem()
-    Storage.shared.context.insert(historyItem)
+    let historyItem = HistoryItem(contents: contents)
 
-    historyItem.contents = contents
+    if #unavailable(macOS 15.0) {
+      // On macOS 14 the history item needs to be inserted into storage directly after creating it.
+      try? History.shared.insertIntoStorage(historyItem)
+    }
+
     historyItem.application = sourceApp?.bundleIdentifier
     historyItem.title = historyItem.generateTitle()
 
@@ -279,5 +293,39 @@ class Clipboard {
     }
 
     return false
+  }
+
+  // Some applications requires window be unfocused and focused back to sync the clipboard.
+  // - Chrome Remote Desktop (https://github.com/p0deje/Maccy/issues/948)
+  // - Netbeans (https://github.com/p0deje/Maccy/issues/879)
+  private func sync() {
+    guard let app = sourceApp,
+          app.bundleURL?.lastPathComponent == "Chrome Remote Desktop.app" ||
+            app.localizedName?.contains("NetBeans") == true else {
+      return
+    }
+
+    NSApp.activate(ignoringOtherApps: true)
+    NSApp.hide(self)
+  }
+
+  private func clearFormatting(_ contents: [HistoryItemContent]) -> [HistoryItemContent] {
+    var newContents: [HistoryItemContent] = contents
+    let stringContents = contents.filter { NSPasteboard.PasteboardType($0.type) == .string }
+
+    // If there is no string representation of data,
+    // behave like we didn't have to remove formatting.
+    if !stringContents.isEmpty {
+      newContents = stringContents
+
+      // Preserve file URLs.
+      // https://github.com/p0deje/Maccy/issues/962
+      let fileURLContents = contents.filter { NSPasteboard.PasteboardType($0.type) == .fileURL }
+      if !fileURLContents.isEmpty {
+        newContents += fileURLContents
+      }
+    }
+
+    return newContents
   }
 }

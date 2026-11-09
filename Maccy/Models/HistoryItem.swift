@@ -2,44 +2,77 @@ import AppKit
 import Defaults
 import Sauce
 import SwiftData
+import Vision
 
 @Model
 class HistoryItem {
+  @MainActor
   static var supportedPins: Set<String> {
     // "a" reserved for select all
     // "q" reserved for quit
     // "v" reserved for paste
     // "w" reserved for close window
+    // "z" reserved for undo/redo
+    // "," reserved for preferences
+    // "`" reserved for cycling through windows
     var keys = Set([
       "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l",
-      "m", "n", "o", "p", "r", "s", "t", "u", "x", "y", "z"
+      "m", "n", "o", "p", "r", "s", "t", "u", "x", "y",
+      "[", "]", ";", "'", ".", "/", "-", "=", "\\"
     ])
 
     if let deleteKey = KeyChord.deleteKey,
-       let character = Sauce.shared.character(for: Int(deleteKey.QWERTYKeyCode), cocoaModifiers: []) {
+       let character = Sauce.shared.character(for: Int(deleteKey.QWERTYKeyCode), modifiers: .cocoa([])) {
       keys.remove(character)
     }
 
     if let pinKey = KeyChord.pinKey,
-       let character = Sauce.shared.character(for: Int(pinKey.QWERTYKeyCode), cocoaModifiers: []) {
+       let character = Sauce.shared.character(for: Int(pinKey.QWERTYKeyCode), modifiers: .cocoa([])) {
+      keys.remove(character)
+    }
+    if let previewKey = KeyChord.previewKey,
+       let character = Sauce.shared.character(for: Int(previewKey.QWERTYKeyCode), modifiers: .cocoa([])) {
       keys.remove(character)
     }
 
     return keys
   }
 
+  // Letters first, then symbols.
+  static func sortedPins(_ pins: some Sequence<String>) -> [String] {
+    pins.sorted { lhs, rhs in
+      let lhsIsLetter = lhs.first?.isLetter ?? false
+      let rhsIsLetter = rhs.first?.isLetter ?? false
+      return lhsIsLetter == rhsIsLetter ? lhs < rhs : lhsIsLetter
+    }
+  }
+
   @MainActor
   static var availablePins: [String] {
-    let descriptor = FetchDescriptor<HistoryItem>(
-      predicate: #Predicate { $0.pin != nil }
-    )
-    let pins = try? Storage.shared.context.fetch(descriptor).compactMap({ $0.pin })
-    let assignedPins = Set(pins ?? [])
+    History.shared.availablePins
+  }
+
+  @MainActor
+  static func availablePins(in items: [HistoryItem]) -> [String] {
+    let assignedPins = Set(items.compactMap(\.pin))
     return Array(supportedPins.subtracting(assignedPins))
   }
 
   @MainActor
   static var randomAvailablePin: String { availablePins.randomElement() ?? "" }
+
+  private static let transientTypes: [String] = [
+    NSPasteboard.PasteboardType.modified.rawValue,
+    NSPasteboard.PasteboardType.fromMaccy.rawValue,
+    NSPasteboard.PasteboardType.linkPresentationMetadata.rawValue,
+    NSPasteboard.PasteboardType.customWebKitPasteboardData.rawValue,
+    NSPasteboard.PasteboardType.source.rawValue,
+    NSPasteboard.PasteboardType.customChromiumWebData.rawValue,
+    NSPasteboard.PasteboardType.chromiumSourceUrl.rawValue,
+    NSPasteboard.PasteboardType.chromiumSourceToken.rawValue,
+    NSPasteboard.PasteboardType.notesRichText.rawValue
+  ]
+  private static let imageTypes: [NSPasteboard.PasteboardType] = StorageType.images.types
 
   var application: String?
   var firstCopiedAt: Date = Date.now
@@ -48,8 +81,10 @@ class HistoryItem {
   var pin: String?
   var title = ""
 
-  @Relationship(deleteRule: .cascade)
+  @Relationship(deleteRule: .cascade, inverse: \HistoryItemContent.item)
   var contents: [HistoryItemContent] = []
+
+  @Transient private var cachedDecodedImage: NSImage?
 
   init(contents: [HistoryItemContent] = []) {
     self.firstCopiedAt = firstCopiedAt
@@ -60,22 +95,33 @@ class HistoryItem {
   func supersedes(_ item: HistoryItem) -> Bool {
     return item.contents
       .filter { content in
-        ![
-          NSPasteboard.PasteboardType.modified.rawValue,
-          NSPasteboard.PasteboardType.fromMaccy.rawValue
-        ].contains(content.type)
+        !Self.transientTypes.contains(content.type)
       }
       .allSatisfy { content in
         contents.contains(where: { $0.type == content.type && $0.value == content.value })
       }
   }
 
+  @MainActor
   func generateTitle() -> String {
-    guard image == nil else {
+    let pasteboardImageData = contentData(Self.imageTypes)
+    let universalClipboardImageURL = universalClipboardImage ? fileURLs.first : nil
+    guard pasteboardImageData == nil && universalClipboardImageURL == nil else {
+      Task {
+        if let recognizedText = await Self.recognizeText(
+          imageData: pasteboardImageData,
+          fileURL: universalClipboardImageURL
+        ) {
+          self.title = recognizedText
+        }
+      }
       return ""
     }
 
+    // 1k characters is trade-off for performance
     var title = previewableText
+      .shortened(to: 1_000)
+      .removingScalarsUnsafeForTitleLayout()
 
     if Defaults[.showSpecialSymbols] {
       if let range = title.range(of: "^ +", options: .regularExpression) {
@@ -130,7 +176,7 @@ class HistoryItem {
 
   var imageData: Data? {
     var data: Data?
-    data = contentData([.tiff, .png, .jpeg])
+    data = contentData(Self.imageTypes)
     if data == nil, universalClipboardImage, let url = fileURLs.first {
       data = try? Data(contentsOf: url)
     }
@@ -139,11 +185,15 @@ class HistoryItem {
   }
 
   var image: NSImage? {
+    if let img = cachedDecodedImage {
+      return img
+    }
     guard let data = imageData else {
       return nil
     }
 
-    return NSImage(data: data)
+    cachedDecodedImage = NSImage(data: data)
+    return cachedDecodedImage
   }
 
   var rtfData: Data? { contentData([.rtf]) }
@@ -153,6 +203,11 @@ class HistoryItem {
     }
 
     return NSAttributedString(rtf: data, documentAttributes: nil)
+  }
+
+  func clearDecodedImageCache() {
+    cachedDecodedImage?.recache()
+    cachedDecodedImage = nil
   }
 
   var text: String? {
@@ -177,7 +232,7 @@ class HistoryItem {
 
   private var universalClipboardImage: Bool { universalClipboard && fileURLs.first?.pathExtension == "jpeg" }
   private var universalClipboardText: Bool {
-    universalClipboard && contentData([.html, .tiff, .png, .jpeg, .rtf, .string]) != nil
+    universalClipboard && contentData([.html, .tiff, .png, .jpeg, .rtf, .string, .heic]) != nil
   }
 
   private func contentData(_ types: [NSPasteboard.PasteboardType]) -> Data? {
@@ -192,5 +247,46 @@ class HistoryItem {
     return contents
       .filter { types.contains(NSPasteboard.PasteboardType($0.type)) }
       .compactMap { $0.value }
+  }
+
+  nonisolated private static let textRecognitionQueue = DispatchQueue(
+    label: "org.p0deje.Maccy.textRecognition",
+    qos: .utility
+  )
+
+  /// Runs OCR on a dedicated queue so the blocking Vision call never occupies
+  /// a thread of Swift's cooperative pool or the main thread.
+  nonisolated private static func recognizeText(imageData: Data?, fileURL: URL?) async -> String? {
+    await withCheckedContinuation { continuation in
+      textRecognitionQueue.async {
+        continuation.resume(returning: performTextRecognition(imageData: imageData, fileURL: fileURL))
+      }
+    }
+  }
+
+  nonisolated private static func performTextRecognition(imageData: Data?, fileURL: URL?) -> String? {
+    guard let data = imageData ?? fileURL.flatMap({ try? Data(contentsOf: $0) }) else {
+      return nil
+    }
+
+    let requestHandler = VNImageRequestHandler(data: data)
+    let request = VNRecognizeTextRequest()
+    request.recognitionLevel = .accurate
+    request.automaticallyDetectsLanguage = true
+
+    do {
+      try requestHandler.perform([request])
+    } catch {
+      print("Unable to perform the request: \(error).")
+      return nil
+    }
+
+    guard let observations = request.results else {
+      return nil
+    }
+
+    return observations
+      .compactMap { $0.topCandidates(1).first?.string }
+      .joined(separator: "\n")
   }
 }

@@ -1,5 +1,7 @@
+> [!WARNING]
+> **Beware of fake websites impersonating Maccy.** Malicious sites (such as `maccyapp.net` and `maccyapp.com`) distribute malware disguised as Maccy. [**maccy.app**](https://maccy.app) is the **only** official website.
 
-<img width="128px" src="https://maccy.app/img/maccy/Logo.png" alt="Logo" align="left" />
+<img width="128px" src="https://maccy.app/img/maccy/Logo.png" alt="Logo" />
 
 # [Maccy](https://maccy.app)
 
@@ -10,6 +12,9 @@ Maccy is a lightweight clipboard manager for macOS. It keeps the history of what
 and lets you quickly navigate, search, and use previous clipboard contents.
 
 Maccy works on macOS Sonoma 14 or higher.
+
+This personal fork adds compact image previews and trackpad zoom. See [development notes](DEVELOPMENT.md)
+and the [isolated preview demo](qa/README.md) for the branch baseline, build commands, and validation scope.
 
 <!-- vim-markdown-toc GFM -->
 
@@ -25,6 +30,7 @@ Maccy works on macOS Sonoma 14 or higher.
   * [When assigning a hotkey to open Maccy, it says that this hotkey is already used in some system setting.](#when-assigning-a-hotkey-to-open-maccy-it-says-that-this-hotkey-is-already-used-in-some-system-setting)
   * [How to restore hidden footer?](#how-to-restore-hidden-footer)
   * [How to ignore copies from Universal Clipboard?](#how-to-ignore-copies-from-universal-clipboard)
+  * [My keyboard shortcut stopped working in password fields. How do I fix this?](#my-keyboard-shortcut-stopped-working-in-password-fields-how-do-i-fix-this)
 * [Translations](#translations)
 * [Motivation](#motivation)
 * [License](#license)
@@ -128,19 +134,23 @@ defaults write org.p0deje.Maccy clipboardCheckInterval 0.1 # 100 ms
 ### How to restore hidden footer?
 
 1. Open Maccy window.
-2. Press ⌘, to open preferences.
+2. Press <kbd>COMMAND (⌘)</kbd> + <kbd>,</kbd> to open preferences.
 3. Enable footer in Appearance section.
 
 If for some reason it doesn't work, run the following command in Terminal.app:
 
 ```sh
-defaults delete org.p0deje.Maccy hideFooter
+defaults write org.p0deje.Maccy showFooter 1
 ```
 
 ### How to ignore copies from [Universal Clipboard](https://support.apple.com/en-us/102430)?
 
 1. Open Preferences -> Ignore -> Pasteboard Types.
 2. Add `com.apple.is-remote-clipboard`.
+
+### My keyboard shortcut stopped working in password fields. How do I fix this?
+
+If your shortcut produces a character (like `Option+C` → "ç"), macOS security may block it in password fields. Use [Karabiner-Elements](https://karabiner-elements.pqrs.org/) to remap your shortcut to a different combination like `Cmd+Shift+C`. [See detailed solution](docs/keyboard-shortcut-password-fields.md).
 
 ## Translations
 
@@ -157,7 +167,6 @@ a clipboard manager that is as free and simple as [Parcellite](http://parcellite
 but I couldn't. So I've decided to build one.
 
 Also, I wanted to learn Swift and get acquainted with macOS application development.
-
 
 ## License
 

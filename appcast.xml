@@ -6,26 +6,35 @@
     <description>Most recent changes with links to updates.</description>
     <language>en</language>
     <item>
-      <title>2.1.0</title>
+      <title>2.8.0</title>
       <description>
         <![CDATA[
           <ul>
-            <li>Added option to only show search field during the search.</li>
-            <li>Added Hungarian translation.</li>
-            <li>Added Latvian translation.</li>
-            <li>Fixed a preview image sizing.</li>
-            <li>Fixed an issue where a popup could be shown on the right-hand display instead of the main one.</li>
-            <li>Fixed an issue where navigation with ⌃N/⌃P would not work.</li>
+            <li>Added VoiceOver accessibility.</li>
+            <li>Added drag and drop reordering of pinned items.</li>
+            <li>Added editing of pinned items inside the preview. The Pins settings pane is removed.</li>
+            <li>Added support for special symbols as pin keys ([];'./-=\).</li>
+            <li>Added image size to the image preview.</li>
+            <li>Added support for ignoring apps outside /Applications.</li>
+            <li>Improved OCR accuracy with automatic language detection.</li>
+            <li>Removed Safari WebArchives and other unselected pasteboard types storage.</li>
+            <li>Fixed memory leak of every history item.</li>
+            <li>Fixed slow menu bar title rendering with large history.</li>
+            <li>Fixed orphaned history item content not being cleaned up.</li>
+            <li>Fixed hang on macOS 26 caused by U+FFFC in titles.</li>
+            <li>Fixed hidden footer warning not wrapping in long translations.</li>
+            <li>Fixed settings window being too narrow.</li>
+            <li>Migrated to Swift 6.</li>
           </ul>
         ]]>
       </description>
-      <pubDate>2024-10-02</pubDate>
-      <releaseNotesLink>https://github.com/p0deje/Maccy/releases/tag/2.1.0</releaseNotesLink>
+      <pubDate>2026-10-26</pubDate>
+      <releaseNotesLink>https://github.com/p0deje/Maccy/releases/tag/2.8.0</releaseNotesLink>
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
       <enclosure
-        url="https://github.com/p0deje/Maccy/releases/download/2.1.0/Maccy.app.zip"
-        sparkle:version="49"
-        sparkle:shortVersionString="2.1.0"
+        url="https://github.com/p0deje/Maccy/releases/download/2.8.0/Maccy.app.zip"
+        sparkle:version="63"
+        sparkle:shortVersionString="2.8.0"
         length="0"
         type="application/octet-stream"
       />

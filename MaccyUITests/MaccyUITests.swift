@@ -1,21 +1,39 @@
+import ApplicationServices
 import Carbon
 import XCTest
 
 // swiftlint:disable file_length
 // swiftlint:disable type_body_length
+@MainActor
+private struct HistoryItemQuery {
+  let query: XCUIElementQuery
+
+  var allElementsBoundByIndex: [XCUIElement] {
+    query.allElementsBoundByIndex
+  }
+
+  subscript(title: String) -> XCUIElement {
+    query.matching(
+      NSPredicate(format: "label == %@ OR label BEGINSWITH %@", title, "\(title), ")
+    ).firstMatch
+  }
+}
+
+@MainActor
 class MaccyUITests: XCTestCase {
   let app = XCUIApplication()
   let pasteboard = NSPasteboard.general
 
   let copy1 = UUID().uuidString
   let copy2 = UUID().uuidString
+  let copy3 = UUID().uuidString
 
   // https://hetima.github.io/fucking_nsimage_syntax
   let image1 = NSImage(named: "NSAddTemplate")!
   let image2 = NSImage(named: "NSBluetoothTemplate")!
 
-  let file1 = URL(fileURLWithPath: "/tmp/file1")
-  let file2 = URL(fileURLWithPath: "/tmp/file2")
+  let file1 = URL.applicationSupportDirectory.appendingPathComponent("file1.txt")
+  let file2 = URL.applicationSupportDirectory.appendingPathComponent("file2.txt")
 
   let rtf1 = NSAttributedString(string: "foo").rtf(
     from: NSRange(0...2),
@@ -29,32 +47,38 @@ class MaccyUITests: XCTestCase {
   let html1 = "<a href='#'>foo</a>".data(using: .utf8)
   let html2 = "<a href='#'>bar</a>".data(using: .utf8)
 
-  let imageType = NSPredicate(
-    format: "elementType == %lu",
-    argumentArray: [XCUIElement.ElementType.image.rawValue]
-  )
-
-  var items: XCUIElementQuery {
-    app.descendants(matching: .any).matching(identifier: "copy-history-item")
+  private var items: HistoryItemQuery {
+    HistoryItemQuery(
+      query: app.descendants(matching: .any).matching(identifier: "copy-history-item")
+    )
   }
 
   var itemTitles: [String] {
     items.allElementsBoundByIndex
       .sorted(by: { $0.frame.origin.y < $1.frame.origin.y })
-      .compactMap { $0.value as? String }
+      .compactMap { $0.label.components(separatedBy: ", ").first }
   }
 
-  override func setUp() {
-    super.setUp()
+  override func setUp() async throws {
+    try await super.setUp()
+
+    try? "Hello world".write(to: file1, atomically: true, encoding: .utf8)
+    try? "Hello world".write(to: file2, atomically: true, encoding: .utf8)
+
     app.launchArguments.append("enable-testing")
+    setKeyboardShortcut("popup", keyCode: kVK_ANSI_C, modifiers: cmdKey | shiftKey)
+    setKeyboardShortcut("pin", keyCode: kVK_ANSI_P, modifiers: optionKey)
+    setKeyboardShortcut("delete", keyCode: kVK_Delete, modifiers: optionKey)
+    setKeyboardShortcut("togglePreview", keyCode: kVK_Space, modifiers: controlKey)
     app.launch()
 
     copyToClipboard(copy2)
     copyToClipboard(copy1)
   }
 
-  override func tearDown() {
-    super.tearDown()
+  override func tearDown() async throws {
+    try await super.tearDown()
+
     app.terminate()
   }
 
@@ -100,18 +124,20 @@ class MaccyUITests: XCTestCase {
     copyToClipboard(file1)
     popUpWithMouse()
     search(file2.lastPathComponent)
-    assertExists(items[file2.absoluteString])
-    assertNotExists(items[file1.absoluteString])
+    assertExists(items[file2.absoluteString.removingPercentEncoding!])
+    assertNotExists(items[file1.absoluteString.removingPercentEncoding!])
   }
 
   func testCopyWithClick() {
     popUpWithMouse()
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     items[copy2].firstMatch.click()
     assertPasteboardStringEquals(copy2)
   }
 
   func testCopyWithEnter() {
     popUpWithMouse()
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     hover(items[copy2].firstMatch)
     app.typeKey(.enter, modifierFlags: [])
     assertPasteboardStringEquals(copy2)
@@ -134,8 +160,39 @@ class MaccyUITests: XCTestCase {
     copyToClipboard(image2)
     copyToClipboard(image1)
     popUpWithMouse()
-    items.matching(imageType).allElementsBoundByIndex[1].click()
+    let allItems = items.allElementsBoundByIndex
+    guard allItems.count > 1 else {
+      XCTFail("Expected at least 2 history items, found \(allItems.count)")
+      return
+    }
+    scrollIntoViewIfNeeded(allItems[1])
+    hoverAndClick(allItems[1])
     assertPasteboardDataCountEquals(image2.tiffRepresentation!.count, forType: .tiff)
+  }
+
+  func testOCRRecognizesTextInImage() {
+    copyToClipboard(textImage("Lighthouse"))
+    popUpWithMouse()
+    assertImageFound(bySearching: "lighthouse")
+  }
+
+  func testOCRCopiesRecognizedTextFromSidePanel() {
+    copyToClipboard(textImage("Lighthouse"))
+    popUpWithMouse()
+
+    let imageItem = items.query.matching(NSPredicate(format: "label BEGINSWITH %@", "Image, ")).firstMatch
+    assertExists(imageItem)
+    hover(imageItem)
+
+    let copyTextButton = app.buttons["Copy extracted text."].firstMatch
+    XCTAssertTrue(copyTextButton.waitForExistence(timeout: 3), "Side panel has no copy extracted text button")
+    expectation(for: NSPredicate(format: "isEnabled == true"), evaluatedWith: copyTextButton)
+    waitForExpectations(timeout: 15)
+    copyTextButton.click()
+
+    assertExists(items["Lighthouse"])
+    XCTAssertEqual(itemTitles.first, "Lighthouse")
+    assertPasteboardStringEquals("Lighthouse")
   }
 
   func testCopyFile() {
@@ -143,31 +200,34 @@ class MaccyUITests: XCTestCase {
     copyToClipboard(file1)
     popUpWithMouse()
 
-    XCTAssertEqual(itemTitles[0...1], [file1.absoluteString, file2.absoluteString])
-
-    items[file2.absoluteString].firstMatch.click()
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [
+      file1.absoluteString.removingPercentEncoding!,
+      file2.absoluteString.removingPercentEncoding!
+    ])
+    scrollIntoViewIfNeeded(items[file2.absoluteString.removingPercentEncoding!].firstMatch)
+    hoverAndClick(items[file2.absoluteString.removingPercentEncoding!].firstMatch)
     assertPasteboardStringEquals(file2.absoluteString, forType: .fileURL)
   }
 
-  // This test does not work because NSPasteboardItem somehow becomes "empty".
-  //
-  // func testCopyRTF() {
-  //   copyToClipboard(rtf2, .rtf)
-  //   copyToClipboard(rtf1, .rtf)
-  //   popUpWithHotkey()
-  //   XCTAssertEqual(visibleMenuItemTitles()[1...2], ["foo", "bar"])
-  //
-  //   app.staticTexts["bar"].firstMatch.click()
-  //   XCTAssertEqual(pasteboard.data(forType: .rtf), rtf2)
-  // }
+  func testCopyRTF() {
+    copyToClipboard(rtf2, .rtf)
+    popUpWithHotkey()
+    closePopupByClickingOutside()
+    copyToClipboard(rtf1, .rtf)
+    popUpWithHotkey()
+    XCTAssertEqual(Array(itemTitles.prefix(2)), ["foo", "bar"])
+    scrollIntoViewIfNeeded(items["bar"].firstMatch)
+    hoverAndClick(items["bar"].firstMatch)
+    XCTAssertEqual(pasteboard.data(forType: .rtf), rtf2)
+  }
 
   func testCopyHTML() {
     copyToClipboard(html2, .html)
     copyToClipboard(html1, .html)
     popUpWithMouse()
-    XCTAssertEqual(itemTitles[0...1], ["foo", "bar"])
-
-    items["bar"].firstMatch.click()
+    XCTAssertEqual(Array(itemTitles.prefix(2)), ["foo", "bar"])
+    scrollIntoViewIfNeeded(items["bar"].firstMatch)
+    hoverAndClick(items["bar"].firstMatch)
     assertPasteboardDataEquals(html2, forType: .html)
   }
 
@@ -224,8 +284,9 @@ class MaccyUITests: XCTestCase {
 
   func testClear() {
     popUpWithMouse()
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     pin(copy2)
-    app.staticTexts["Clear"].click()
+    hoverAndClick(app.buttons["Clear"].firstMatch)
     confirmClear()
     popUpWithMouse()
     assertNotExists(items[copy1])
@@ -235,7 +296,7 @@ class MaccyUITests: XCTestCase {
   func testClearDuringSearch() {
     popUpWithMouse()
     search(copy2)
-    app.staticTexts["Clear"].click()
+    hoverAndClick(app.buttons["Clear"].firstMatch)
     confirmClear()
     popUpWithMouse()
     assertNotExists(items[copy1])
@@ -244,9 +305,10 @@ class MaccyUITests: XCTestCase {
 
   func testClearAll() {
     popUpWithMouse()
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     pin(copy2)
     XCUIElement.perform(withKeyModifiers: [.shift]) {
-      app.staticTexts["Clear all"].click()
+      hoverAndClick(app.buttons["Clear all"].firstMatch)
     }
     confirmClear()
     popUpWithMouse()
@@ -256,27 +318,44 @@ class MaccyUITests: XCTestCase {
 
   func testPin() {
     popUpWithMouse()
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     pin(copy2)
-    XCTAssertEqual(itemTitles[0...1], [copy2, copy1])
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy2, copy1])
 
     app.typeKey(.escape, modifierFlags: [])
     popUpWithMouse()
-    XCTAssertEqual(itemTitles[0...1], [copy2, copy1])
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy2, copy1])
   }
 
   func testPinDuringSearch() {
     popUpWithMouse()
     search(copy2)
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     pin(copy2)
     assertSearchFieldValue("")
-    XCTAssertEqual(itemTitles[0...1], [copy2, copy1])
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy2, copy1])
   }
 
   func testUnpin() {
     popUpWithMouse()
+    scrollIntoViewIfNeeded(items[copy2].firstMatch)
     pin(copy2)
     pin(copy2)
-    XCTAssertEqual(itemTitles[0...1], [copy1, copy2])
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy1, copy2])
+  }
+
+  func testReorderPinsByDragging() {
+    popUpWithMouse()
+    pin(copy1)
+    pin(copy2)
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy1, copy2])
+
+    drag(items[copy2].firstMatch, before: items[copy1].firstMatch)
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy2, copy1])
+
+    app.typeKey(.escape, modifierFlags: [])
+    popUpWithMouse()
+    XCTAssertEqual(Array(itemTitles.prefix(2)), [copy2, copy1])
   }
 
   func testRemoveLastWordFromSearchWithControlW() {
@@ -297,7 +376,7 @@ class MaccyUITests: XCTestCase {
 
   func testDisablesOnOptionClickingMenubarIcon() {
     XCUIElement.perform(withKeyModifiers: .option) {
-      app.statusItems.firstMatch.click()
+      clickStatusItem()
     }
 
     let copy3 = UUID().uuidString
@@ -311,13 +390,13 @@ class MaccyUITests: XCTestCase {
 
     app.typeKey(.escape, modifierFlags: [])
     XCUIElement.perform(withKeyModifiers: .option) {
-      app.statusItems.firstMatch.click()
+      clickStatusItem()
     }
   }
 
   func testDisablesOnlyForNextCopyOnOptionShiftClickingMenubarIcon() {
     XCUIElement.perform(withKeyModifiers: [.option, .shift]) {
-      app.statusItems.firstMatch.click()
+      clickStatusItem()
     }
 
     let copy3 = UUID().uuidString
@@ -338,14 +417,229 @@ class MaccyUITests: XCTestCase {
     assertExists(items["foo bar"])
   }
 
+  func testOpenAndClose() throws {
+    // Simulate the popup hotkey press (Cmd + Shift + C).
+    let cDown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true)!
+    cDown.flags = [.maskCommand, .maskShift]
+    cDown.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    // Release the 'C' key but keep the popup open.
+    let cUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)!
+    cUp.flags = [.maskCommand, .maskShift]
+    cUp.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    // Release the 'Shift' key and assert that the popup remains open - "normal" mode.
+    let shiftUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Shift), keyDown: false)!
+    shiftUp.flags = [.maskCommand] // Command remains active, Shift released
+    shiftUp.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    // Release the 'CMD' key and assert that the popup remains open - "normal" mode.
+    let commandUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Command), keyDown: false)!
+    commandUp.flags = []
+    commandUp.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    // Press shortcut again and assert the window closes
+    cDown.flags = [.maskCommand, .maskShift]
+    cDown.post(tap: .cghidEventTap)
+
+    assertPopupDismissed()
+  }
+
+  func testOpenAndSelectSecondItem() throws {
+    // Simulate the popup hotkey press (Cmd + Shift + C).
+    let cDown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true)!
+    cDown.flags = [.maskCommand, .maskShift]
+    cDown.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    let cUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)!
+    cUp.flags = [.maskCommand, .maskShift]
+    cUp.post(tap: .cghidEventTap)
+
+    // Press C 1 more time while keeping the modifier keys pressed
+    cDown.post(tap: .cghidEventTap)
+
+    // Release all modifiers keys and assert that the popup closes.
+    let modifiersUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Shift), keyDown: false)!
+    modifiersUp.flags = []
+    modifiersUp.post(tap: .cghidEventTap)
+
+    assertPopupDismissed()
+    assertPasteboardStringEquals(copy2)
+  }
+
+  func testOpenAndSelectThirdItem() throws {
+    copyToClipboard(copy3)
+
+    // Simulate the popup hotkey press (Cmd + Shift + C).
+    let cDown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true)!
+    cDown.flags = [.maskCommand, .maskShift]
+    cDown.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    let cUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: false)!
+    cUp.flags = [.maskCommand, .maskShift]
+    cUp.post(tap: .cghidEventTap)
+
+    // Press C 2 more times while keeping the modifier keys pressed
+    cDown.post(tap: .cghidEventTap)
+    cUp.post(tap: .cghidEventTap)
+    cDown.post(tap: .cghidEventTap)
+
+    // Release all modifiers keys and assert that the popup closes.
+    let modifiersUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Shift), keyDown: false)!
+    modifiersUp.flags = []
+    modifiersUp.post(tap: .cghidEventTap)
+
+    assertPopupDismissed()
+    assertPasteboardStringEquals(copy2)
+  }
+
+  func testOpenAndSelectThirdItemRepeatedPress() throws {
+    copyToClipboard(copy3)
+
+    // Simulate the popup hotkey press (Cmd + Shift + C).
+    let cDown = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_ANSI_C), keyDown: true)!
+    cDown.flags = [.maskCommand, .maskShift]
+    cDown.post(tap: .cghidEventTap)
+
+    waitUntilPoppedUp()
+
+    // Press C 2 more times while keeping the modifier keys pressed
+    cDown.post(tap: .cghidEventTap)
+    cDown.post(tap: .cghidEventTap)
+
+    // Release all modifiers keys and assert that the popup closes.
+    let modifiersUp = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(kVK_Shift), keyDown: false)!
+    modifiersUp.flags = []
+    modifiersUp.post(tap: .cghidEventTap)
+
+    assertPopupDismissed()
+    assertPasteboardStringEquals(copy2)
+  }
+
+  func testTogglePopupAndCloseOnClickOutside() {
+    popUpWithHotkey()
+
+    closePopupByClickingOutside()
+    assertNotExists(items[copy1])
+
+    // Assert that the hotkeys still work
+    popUpWithHotkey()
+
+    simulatePopupHotkey()
+    assertPopupDismissed()
+  }
+
   private func popUpWithHotkey() {
     simulatePopupHotkey()
     waitUntilPoppedUp()
   }
 
+  // KeyboardShortcuts persists JSON strings in UserDefaults.standard. Passing them
+  // as launch arguments places them in the isolated, higher-priority NSArgumentDomain.
+  private func setKeyboardShortcut(_ name: String, keyCode: Int, modifiers: Int) {
+    app.launchArguments.append(contentsOf: [
+      "-KeyboardShortcuts_\(name)",
+      #""{\"carbonKeyCode\":\#(keyCode),\"carbonModifiers\":\#(modifiers)}""#
+    ])
+  }
+
+  // Click outside the popup to close it
+  private func closePopupByClickingOutside() {
+    let popup = app.dialogs.firstMatch
+    guard popup.exists else {
+      return
+    }
+
+    let popupFrame = popup.frame
+    let screenWidth = NSScreen.screens.first?.frame.width ?? popupFrame.maxX + 100
+    let margin: CGFloat = 50
+    let targetX = popupFrame.maxX + margin < screenWidth
+      ? popupFrame.maxX + margin
+      : popupFrame.minX - margin
+    popup.coordinate(withNormalizedOffset: .zero)
+      .withOffset(CGVector(dx: targetX - popupFrame.minX, dy: popupFrame.height / 2))
+      .click()
+  }
+
   private func popUpWithMouse() {
-    app.statusItems.firstMatch.click()
+    clickStatusItem()
     waitUntilPoppedUp()
+  }
+
+  private var isRunningOnCI: Bool {
+    ProcessInfo.processInfo.environment["CI"] == "true"
+  }
+
+  private func clickStatusItem() {
+    if isRunningOnCI {
+      pressStatusItemViaAccessibility()
+      return
+    }
+
+    let statusItem = app.statusItems.firstMatch
+    if statusItem.waitForExistence(timeout: 3), statusItem.isHittable {
+      statusItem.click()
+    } else {
+      pressStatusItemViaAccessibility()
+    }
+  }
+
+  private func pressStatusItemViaAccessibility() {
+    let pid = NSRunningApplication.runningApplications(withBundleIdentifier: "org.p0deje.Maccy")
+      .max { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }?
+      .processIdentifier
+    guard let pid else {
+      XCTFail("Maccy is not running")
+      return
+    }
+
+    let appElement = AXUIElementCreateApplication(pid)
+    let deadline = Date.now.addingTimeInterval(3)
+    var statusItem = axStatusItem(of: appElement)
+    while statusItem == nil && Date.now < deadline {
+      Thread.sleep(forTimeInterval: 0.1)
+      statusItem = axStatusItem(of: appElement)
+    }
+    guard let statusItem else {
+      XCTFail("Maccy has no status item exposed via accessibility")
+      return
+    }
+
+    let result = AXUIElementPerformAction(statusItem, kAXPressAction as CFString)
+    XCTAssertEqual(result, .success, "Failed to press status item via accessibility")
+  }
+
+  private func axStatusItem(of appElement: AXUIElement) -> AXUIElement? {
+    guard let extrasMenuBar = axElement(appElement, attribute: kAXExtrasMenuBarAttribute) else {
+      return nil
+    }
+
+    var children: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(extrasMenuBar, kAXChildrenAttribute as CFString, &children) == .success else {
+      return nil
+    }
+    return (children as? [AXUIElement])?.first
+  }
+
+  private func axElement(_ element: AXUIElement, attribute: String) -> AXUIElement? {
+    var value: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+          let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
+      return nil
+    }
+    return (value as! AXUIElement) // swiftlint:disable:this force_cast
   }
 
   private func simulatePopupHotkey() {
@@ -372,8 +666,14 @@ class MaccyUITests: XCTestCase {
   }
 
   private func waitUntilPoppedUp() {
-    if !app.staticTexts.firstMatch.waitForExistence(timeout: 3) {
+    if !app.dialogs.firstMatch.waitForExistence(timeout: 3) {
       XCTFail("Maccy did not pop up")
+    }
+  }
+
+  private func assertPopupDismissed() {
+    if !app.dialogs.firstMatch.waitForNonExistence(timeout: 3) {
+      XCTFail("Maccy did not dismiss")
     }
   }
 
@@ -387,6 +687,34 @@ class MaccyUITests: XCTestCase {
     pasteboard.clearContents()
     pasteboard.setData(content.tiffRepresentation, forType: .tiff)
     waitTillClipboardCheck()
+  }
+
+  private func textImage(_ text: String) -> NSImage {
+    let string = NSAttributedString(string: text, attributes: [
+      .font: NSFont.boldSystemFont(ofSize: 48),
+      .foregroundColor: NSColor.black
+    ])
+    let size = NSSize(width: string.size().width + 40, height: string.size().height + 40)
+    return NSImage(size: size, flipped: false) { rect in
+      NSColor.white.setFill()
+      rect.fill()
+      string.draw(at: NSPoint(x: 20, y: 20))
+      return true
+    }
+  }
+
+  private func assertImageFound(bySearching text: String) {
+    let imageItem = items.query.matching(NSPredicate(format: "label BEGINSWITH %@", "Image, ")).firstMatch
+    for _ in 0..<5 {
+      search(text)
+      if imageItem.waitForExistence(timeout: 2) {
+        break
+      }
+      app.typeKey("w", modifierFlags: [.control])
+      sleep(2)
+    }
+    XCTAssertTrue(imageItem.exists, "No image found by searching \"\(text)\"")
+    XCTAssertEqual(items.allElementsBoundByIndex.count, 1)
   }
 
   private func copyToClipboard(_ content: URL) {
@@ -415,9 +743,46 @@ class MaccyUITests: XCTestCase {
     usleep(1_500_000)
   }
 
+  private func drag(_ element: XCUIElement, before target: XCUIElement) {
+    hover(element)
+    let source = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    let destination = target.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2))
+    source.click(forDuration: 0.5, thenDragTo: destination, withVelocity: .slow, thenHoldForDuration: 0.5)
+    usleep(500_000)
+  }
+
+  private func hoverAndClick(_ element: XCUIElement) {
+    let coordinate = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+    coordinate.hover()
+    usleep(200_000)
+    coordinate.click()
+  }
+
+  private func scrollIntoViewIfNeeded(_ element: XCUIElement) {
+    guard element.exists else {
+      return
+    }
+
+    let container = app.scrollViews["history-scroll-view"].firstMatch
+    guard container.exists else {
+      return
+    }
+
+    var attempts = 0
+    while !container.frame.contains(element.frame) && attempts < 15 {
+      // Negative deltaY scrolls down (reveals elements below the viewport).
+      let delta: CGFloat = element.frame.midY > container.frame.midY ? -10 : 10
+      container.scroll(byDeltaX: 0, deltaY: delta)
+      usleep(100_000)
+      attempts += 1
+    }
+  }
+
   private func hover(_ element: XCUIElement) {
-    element.hover()
-    usleep(20000)
+    element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)).hover()
+    usleep(50_000)
+    element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).hover()
+    usleep(200_000)
   }
 
   private func search(_ string: String) {
@@ -479,26 +844,23 @@ class MaccyUITests: XCTestCase {
     waitForExpectations(timeout: 3)
   }
 
-  private func assertPasteboardStringEquals(
-    _ expected: String?, forType: NSPasteboard.PasteboardType = .string
-  ) {
-    let predicate = NSPredicate { (object, _) -> Bool in
-      guard let copy = object as? String else {
-        return false
+  private func assertPasteboardStringEquals(_ expected: String?, forType: NSPasteboard.PasteboardType = .string) {
+      let predicate = NSPredicate { (object, _) -> Bool in
+        guard let copy = object as? String else {
+          return false
+        }
+        return self.pasteboard.string(forType: forType) == copy
       }
-
-      return self.pasteboard.string(forType: forType) == copy
+      expectation(for: predicate, evaluatedWith: expected)
+      waitForExpectations(timeout: 3)
     }
-    expectation(for: predicate, evaluatedWith: expected)
-    waitForExpectations(timeout: 3)
-  }
 
   private func assertSearchFieldValue(_ string: String) {
     XCTAssertEqual(app.textFields.firstMatch.value as? String, string)
   }
 
   private func confirmClear() {
-    let button = app.dialogs.firstMatch.buttons["Clear"].firstMatch
+    let button = app.buttons["confirmation-confirm"].firstMatch
     expectation(for: NSPredicate(format: "isHittable = 1"), evaluatedWith: button)
     waitForExpectations(timeout: 3)
     button.click()

@@ -51,7 +51,7 @@ struct StorageSettingsPane: View {
       }
     }
 
-    deinit {
+    isolated deinit {
       observer?.invalidate()
     }
   }
@@ -60,6 +60,7 @@ struct StorageSettingsPane: View {
   @Default(.sortBy) private var sortBy
 
   @State private var viewModel = ViewModel()
+  @State private var storageSize = Storage.shared.size
 
   private let sizeFormatter: NumberFormatter = {
     let formatter = NumberFormatter()
@@ -96,8 +97,17 @@ struct StorageSettingsPane: View {
           TextField("", value: $size, formatter: sizeFormatter)
             .frame(width: 80)
             .help(Text("SizeTooltip", tableName: "StorageSettings"))
-          Stepper("", value: $size, in: 1...9999)
+            .accessibilityLabel(Text("Size", tableName: "StorageSettings"))
+          Stepper("", value: $size, in: 1...999)
             .labelsHidden()
+            .accessibilityLabel(Text("Size", tableName: "StorageSettings"))
+          Text(storageSize)
+            .controlSize(.small)
+            .foregroundStyle(.gray)
+            .help(Text("CurrentSizeTooltip", tableName: "StorageSettings"))
+            .onAppear {
+              storageSize = Storage.shared.size
+            }
         }
       }
 
@@ -108,8 +118,9 @@ struct StorageSettingsPane: View {
           }
         }
         .labelsHidden()
-        .frame(width: 160)
+        .frame(width: 160, alignment: .leading)
         .help(Text("SortByTooltip", tableName: "StorageSettings"))
+        .accessibilityLabel(Text("SortBy", tableName: "StorageSettings"))
       }
     }
   }

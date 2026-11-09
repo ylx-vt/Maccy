@@ -1,4 +1,5 @@
 import Sauce
+import Defaults
 import SwiftUI
 
 struct KeyHandlingView<Content: View>: View {
@@ -11,10 +12,22 @@ struct KeyHandlingView<Content: View>: View {
   var body: some View {
     content()
       .onKeyPress { _ in
+        guard !appState.isEditingItem else { return .ignored }
+
         // Unfortunately, key presses don't allow access to
         // key code and don't properly work with multiple inputs,
         // so pressing ⌘, on non-English layout doesn't open
         // preferences. Stick to NSEvent to fix this behavior.
+
+        if searchFocused {
+          // Ignore input when candidate window is open
+          // https://stackoverflow.com/questions/73677444/how-to-detect-the-candidate-window-when-using-japanese-keyboard
+          if let inputClient = NSApp.keyWindow?.firstResponder as? NSTextInputClient,
+             inputClient.hasMarkedText() {
+            return .ignored
+          }
+        }
+
         switch KeyChord(NSApp.currentEvent) {
         case .clearHistory:
           if let item = appState.footer.items.first(where: { $0.title == "clear" }),
@@ -46,9 +59,10 @@ struct KeyHandlingView<Content: View>: View {
           searchQuery = ""
           return .handled
         case .deleteCurrentItem:
-          if let item = appState.history.selectedItem {
-            appState.highlightNext()
-            appState.history.delete(item)
+          if appState.navigator.pasteStackSelected {
+            appState.removePasteStack()
+          } else {
+            appState.deleteSelection()
           }
           return .handled
         case .deleteOneCharFromSearch:
@@ -70,50 +84,89 @@ struct KeyHandlingView<Content: View>: View {
             return .ignored
           }
 
-          appState.highlightNext()
+          appState.navigator.highlightNext()
           return .handled
         case .moveToLast:
           guard NSApp.characterPickerWindow == nil else {
             return .ignored
           }
 
-          appState.highlightLast()
+          appState.navigator.highlightLast()
           return .handled
         case .moveToPrevious:
           guard NSApp.characterPickerWindow == nil else {
             return .ignored
           }
 
-          appState.highlightPrevious()
+          appState.navigator.highlightPrevious()
           return .handled
         case .moveToFirst:
           guard NSApp.characterPickerWindow == nil else {
             return .ignored
           }
 
-          appState.highlightFirst()
+          appState.navigator.highlightFirst()
+          return .handled
+        case .extendToNext:
+          guard NSApp.characterPickerWindow == nil else {
+            return .ignored
+          }
+          guard AppState.shared.multiSelectionEnabled else {
+            return .ignored
+          }
+          appState.navigator.extendHighlightToNext()
+          return .handled
+        case .extendToLast:
+          guard NSApp.characterPickerWindow == nil else {
+            return .ignored
+          }
+          guard AppState.shared.multiSelectionEnabled else {
+            return .ignored
+          }
+          appState.navigator.extendHighlightToLast()
+          return .handled
+        case .extendToPrevious:
+          guard NSApp.characterPickerWindow == nil else {
+            return .ignored
+          }
+          guard AppState.shared.multiSelectionEnabled else {
+            return .ignored
+          }
+          appState.navigator.extendHighlightToPrevious()
+          return .handled
+        case .extendToFirst:
+          guard NSApp.characterPickerWindow == nil else {
+            return .ignored
+          }
+          guard AppState.shared.multiSelectionEnabled else {
+            return .ignored
+          }
+          appState.navigator.extendHighlightToFirst()
           return .handled
         case .openPreferences:
           appState.openPreferences()
           return .handled
         case .pinOrUnpin:
-          appState.history.togglePin(appState.history.selectedItem)
+          appState.togglePin()
           return .handled
         case .selectCurrentItem:
-          appState.select()
+          appState.select(flags: .currentModifierFlags)
           return .handled
         case .close:
           appState.popup.close()
+          return .handled
+        case .togglePreview:
+          appState.preview.togglePreview()
           return .handled
         default:
           ()
         }
 
         if let item = appState.history.pressedShortcutItem {
-          appState.selection = item.id
+          appState.navigator.select(item: item)
           Task {
             try? await Task.sleep(for: .milliseconds(50))
-            appState.history.select(item)
+            appState.history.select(item, flags: .currentModifierFlags)
           }
           return .handled
         }

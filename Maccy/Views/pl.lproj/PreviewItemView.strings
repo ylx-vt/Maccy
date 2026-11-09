@@ -2,5 +2,12 @@
 "FirstCopyTime" = "Skopiowano:";
 "LastCopyTime" = "Ostatnio skopiowano:";
 "NumberOfCopies" = "Liczba kopii:";
-"PinKey" = "Naciśnij {pinKey} aby odpiąć wpis.";
+"PinKey" = "Naciśnij {pinKey} aby piąć wpis.";
+"UnpinKey" = "Naciśnij {pinKey} aby odpiąć wpis.";
 "DeleteKey" = "Naciśnij {deleteKey} aby usunąć wpis.";
+"OpenPreview" = "Naciśnij {previewKey}, aby pokazać podgląd.";
+"ClosePreview" = "Naciśnij {previewKey}, aby ukryć podgląd.";
+"Dimensions" = "Wymiary:";
+"Size" = "Rozmiar:";
+"CopyExtractedText" = "Skopiuj wyodrębniony tekst.";
+"EditItem" = "Edytuj element";

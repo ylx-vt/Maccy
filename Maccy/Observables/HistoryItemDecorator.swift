@@ -5,13 +5,20 @@ import Observation
 import Sauce
 
 @Observable
-class HistoryItemDecorator: Identifiable, Hashable {
+class HistoryItemDecorator: Identifiable, Hashable, HasVisibility {
+  private static let previewMaxParagraphSize = 10_000
+
   static func == (lhs: HistoryItemDecorator, rhs: HistoryItemDecorator) -> Bool {
     return lhs.id == rhs.id
   }
 
-  static var previewThrottler = Throttler(minimumDelay: Double(Defaults[.previewDelay]) / 1000)
-  static var previewImageSize: NSSize { NSScreen.forPopup?.visibleFrame.size ?? NSSize(width: 2048, height: 1536) }
+  static var previewImageSize: NSSize {
+    let scale = NSScreen.forPopup?.backingScaleFactor ?? 2
+    return NSSize(
+      width: ImagePreviewSizing.maximumSize.width * scale,
+      height: ImagePreviewSizing.maximumSize.height * scale
+    )
+  }
   static var thumbnailImageSize: NSSize { NSSize(width: 340, height: Defaults[.imageMaxHeight]) }
 
   let id = UUID()
@@ -20,21 +27,11 @@ class HistoryItemDecorator: Identifiable, Hashable {
   var attributedTitle: AttributedString?
 
   var isVisible: Bool = true
-  var isSelected: Bool = false {
-    didSet {
-      if isSelected {
-        Self.previewThrottler.throttle {
-          Self.previewThrottler.minimumDelay = 0.2
-          self.showPreview = true
-        }
-      } else {
-        Self.previewThrottler.cancel()
-        self.showPreview = false
-      }
-    }
+  var selectionIndex: Int = -1
+  var isSelected: Bool {
+    return selectionIndex != -1
   }
   var shortcuts: [KeyShortcut] = []
-  var showPreview: Bool = false
 
   var application: String? {
     if item.universalClipboard {
@@ -50,15 +47,31 @@ class HistoryItemDecorator: Identifiable, Hashable {
     return url.deletingPathExtension().lastPathComponent
   }
 
-  var previewImage: NSImage?
-  var thumbnailImage: NSImage?
+  var hasImage: Bool { item.image != nil }
+  var hasFileURLs: Bool { !item.fileURLs.isEmpty }
+  var hasPlainText: Bool { item.text != nil }
+  var hasRichText: Bool { item.rtf != nil || item.html != nil }
 
-  var text: String { item.previewableText }
+  var previewImageGenerationTask: Task<(), Error>?
+  var thumbnailImageGenerationTask: Task<(), Error>?
+  var previewImage: NSImage?
+  private(set) var previewText = SizedString("")
+  var thumbnailImage: NSImage?
+  var applicationImage: ApplicationImage
+
+  @ObservationIgnored
+  private(set) lazy var imageSize: String? = item.imageData.map {
+    ByteCountFormatter.string(fromByteCount: Int64($0.count), countStyle: .file)
+  }
+
+  // 10k characters seems to be more than enough on large displays
+  var text: String { previewText.string.shortened(to: 10_000) }
 
   var isPinned: Bool { item.pin != nil }
   var isUnpinned: Bool { item.pin == nil }
 
   func hash(into hasher: inout Hasher) {
+    // We need to hash title and attributedTitle, so SwiftUI knows it needs to update the view if they chage
     hasher.combine(id)
     hasher.combine(title)
     hasher.combine(attributedTitle)
@@ -66,26 +79,130 @@ class HistoryItemDecorator: Identifiable, Hashable {
 
   private(set) var item: HistoryItem
 
+  var multiSelectionIndex: Int? {
+    guard selectionIndex >= 0, AppState.shared.navigator.isMultiSelectInProgress else {
+      return nil
+    }
+    return selectionIndex
+  }
+
+  // Describe the complete item independently of its potentially truncated visual content.
+  var accessibilityLabel: String {
+    var parts: [String] = []
+    if hasImage, let image = item.image {
+      let size = image.pixelSize
+      parts.append(
+        String(
+          format: NSLocalizedString("history_item_image_accessibility_label_no_app", comment: ""),
+          Int(size.width),
+          Int(size.height)
+        )
+      )
+    } else {
+      parts.append(title)
+    }
+    if let application = application {
+      parts.append(application)
+    }
+    if isPinned {
+      parts.append(NSLocalizedString("history_item_pinned_accessibility_value", comment: ""))
+    }
+    if let index = multiSelectionIndex {
+      parts.append(
+        String(
+          format: NSLocalizedString("history_item_selected_accessibility_value", comment: ""),
+          index + 1,
+          AppState.shared.navigator.selection.count
+        )
+      )
+    }
+    return parts.joined(separator: ", ")
+  }
+
   init(_ item: HistoryItem, shortcuts: [KeyShortcut] = []) {
     self.item = item
     self.shortcuts = shortcuts
     self.title = item.title
+    self.applicationImage = ApplicationImageCache.shared.getImage(item: item)
 
     synchronizeItemPin()
     synchronizeItemTitle()
-    Task {
-      await sizeImages()
+    synchronizeItemText()
+  }
+
+  @MainActor
+  func ensureThumbnailImage() {
+    guard item.image != nil else {
+      return
+    }
+    guard thumbnailImage == nil else {
+      return
+    }
+    guard thumbnailImageGenerationTask == nil else {
+      return
+    }
+    thumbnailImageGenerationTask = Task { [weak self] in
+      self?.generateThumbnailImage()
     }
   }
 
   @MainActor
-  func sizeImages() {
+  func ensurePreviewImage() {
+    guard item.image != nil else {
+      return
+    }
+    guard previewImage == nil else {
+      return
+    }
+    guard previewImageGenerationTask == nil else {
+      return
+    }
+    previewImageGenerationTask = Task { [weak self] in
+      self?.generatePreviewImage()
+    }
+  }
+
+  @MainActor
+  func asyncGetPreviewImage() async -> NSImage? {
+    if let image = previewImage {
+      return image
+    }
+    ensurePreviewImage()
+    _ = await previewImageGenerationTask?.result
+    return previewImage
+  }
+
+  @MainActor
+  func cleanupImages() {
+    thumbnailImageGenerationTask?.cancel()
+    previewImageGenerationTask?.cancel()
+    thumbnailImage?.recache()
+    previewImage?.recache()
+    thumbnailImage = nil
+    previewImage = nil
+    item.clearDecodedImageCache()
+  }
+
+  @MainActor
+  private func generateThumbnailImage() {
     guard let image = item.image else {
       return
     }
-
-    previewImage = image.resized(to: HistoryItemDecorator.previewImageSize)
     thumbnailImage = image.resized(to: HistoryItemDecorator.thumbnailImageSize)
+  }
+
+  @MainActor
+  private func generatePreviewImage() {
+    guard let image = item.image else {
+      return
+    }
+    previewImage = image.resized(to: HistoryItemDecorator.previewImageSize)
+  }
+
+  @MainActor
+  func sizeImages() {
+    generatePreviewImage()
+    generateThumbnailImage()
   }
 
   func highlight(_ query: String, _ ranges: [Range<String.Index>]) {
@@ -115,24 +232,17 @@ class HistoryItemDecorator: Identifiable, Hashable {
     attributedTitle = attributedString
   }
 
-  @MainActor
-  func togglePin() {
-    if item.pin != nil {
-      item.pin = nil
-    } else {
-      let pin = HistoryItem.randomAvailablePin
-      item.pin = pin
-    }
-  }
-
   private func synchronizeItemPin() {
     _ = withObservationTracking {
       item.pin
-    } onChange: {
+    } onChange: { [weak self] in
       DispatchQueue.main.async {
+        guard let self else { return }
         if let pin = self.item.pin {
           self.shortcuts = KeyShortcut.create(character: pin)
         }
+        // History assigns numeric shortcuts when unpinning. Preserve them when
+        // this observation callback runs after the history has been updated.
         self.synchronizeItemPin()
       }
     }
@@ -141,10 +251,21 @@ class HistoryItemDecorator: Identifiable, Hashable {
   private func synchronizeItemTitle() {
     _ = withObservationTracking {
       item.title
-    } onChange: {
+    } onChange: { [weak self] in
       DispatchQueue.main.async {
+        guard let self else { return }
         self.title = self.item.title
         self.synchronizeItemTitle()
+      }
+    }
+  }
+
+  private func synchronizeItemText() {
+    previewText = withObservationTracking {
+      SizedString(item.previewableText, maxParagraphBytes: Self.previewMaxParagraphSize)
+    } onChange: { [weak self] in
+      DispatchQueue.main.async { [weak self] in
+        self?.synchronizeItemText()
       }
     }
   }

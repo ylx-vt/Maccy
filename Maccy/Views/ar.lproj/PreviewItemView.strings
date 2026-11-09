@@ -2,5 +2,12 @@
 "FirstCopyTime" = "وقت أول نسخة:";
 "LastCopyTime" = "وقت آخر نسخة:";
 "NumberOfCopies" = "عدد النسخ:";
-"PinKey" = "اضغط على {pinKey} للتثبيت أو إلغاء التثبيت.";
+"PinKey" = "اضغط على {pinKey} للتثبيت.";
+"UnpinKey" = "اضغط على {pinKey} للتثبيت أو إلغاء التثبيت.";
 "DeleteKey" = "اضغط على {deleteKey} للحذف.";
+"OpenPreview" = "اضغط على {previewKey} لإظهار المعاينة.";
+"ClosePreview" = "اضغط على {previewKey} لإخفاء المعاينة.";
+"Dimensions" = "الأبعاد:";
+"Size" = "الحجم:";
+"CopyExtractedText" = "انسخ النص المستخرج.";
+"EditItem" = "تعديل العنصر";

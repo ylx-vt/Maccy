@@ -8,7 +8,7 @@ struct SearchFieldView: View {
 
   var body: some View {
     ZStack {
-      RoundedRectangle(cornerRadius: 5, style: .continuous)
+      RoundedRectangle(cornerRadius: Popup.cornerRadius, style: .continuous)
         .fill(Color.secondary)
         .opacity(0.1)
         .frame(height: 23)
@@ -18,13 +18,14 @@ struct SearchFieldView: View {
           .frame(width: 11, height: 11)
           .padding(.leading, 5)
           .opacity(0.8)
+          .accessibilityHidden(true)
 
         TextField(placeholder, text: $query)
           .disableAutocorrection(true)
           .lineLimit(1)
           .textFieldStyle(.plain)
           .onSubmit {
-            appState.select()
+            appState.select(flags: .currentModifierFlags)
           }
 
         if !query.isEmpty {
@@ -35,8 +36,9 @@ struct SearchFieldView: View {
               .frame(width: 11, height: 11)
               .padding(.trailing, 5)
           }
-          .buttonStyle(PlainButtonStyle())
-          .opacity(query.isEmpty ? 0 : 0.9)
+          .buttonStyle(.plain)
+          .opacity(0.9)
+          .accessibilityLabel(Text("search_clear_accessibility_label"))
         }
       }
     }

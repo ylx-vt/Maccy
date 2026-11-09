@@ -2,5 +2,16 @@
 "FirstCopyTime" = "First copy time:";
 "LastCopyTime" = "Last copy time:";
 "NumberOfCopies" = "Number of copies:";
-"PinKey" = "Press {pinKey} to (un)pin.";
+"Dimensions" = "Dimensions:";
+"Size" = "Size:";
+"PinKey" = "Press {pinKey} to pin.";
+"UnpinKey" = "Press {pinKey} to unpin.";
 "DeleteKey" = "Press {deleteKey} to delete.";
+"OpenPreview" = "Press {previewKey} to show preview.";
+"ClosePreview" = "Press {previewKey} to hide preview.";
+"CopyExtractedText" = "Copy extracted text.";
+"EditItem" = "Edit item";
+"FitImage" = "Fit";
+"ZoomInImage" = "Zoom in";
+"ZoomOutImage" = "Zoom out";
+"ImageZoomHint" = "Point at the image and pinch to zoom. Scroll to pan, or double-click to fit.";

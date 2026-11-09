@@ -2,5 +2,12 @@
 "FirstCopyTime" = "Eerste kopie:";
 "LastCopyTime" = "Laatste kopie:";
 "NumberOfCopies" = "Aantal kopieën:";
-"PinKey" = "Druk op {pinKey} om te (ont)pinnen.";
+"PinKey" = "Druk op {pinKey} om te pinnen.";
+"UnpinKey" = "Druk op {pinKey} om te ontpinnen.";
 "DeleteKey" = "Druk op {deleteKey} om te verwijderen.";
+"OpenPreview" = "Druk op {previewKey} om het voorbeeld te tonen.";
+"ClosePreview" = "Druk op {previewKey} om het voorbeeld te verbergen.";
+"Dimensions" = "Afmetingen:";
+"Size" = "Grootte:";
+"CopyExtractedText" = "Geëxtraheerde tekst kopiëren.";
+"EditItem" = "Item bewerken";

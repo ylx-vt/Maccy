@@ -2,5 +2,12 @@
 "FirstCopyTime" = "Tidspunkt første kopiering:";
 "LastCopyTime" = "Tidspunkt siste kopiering:";
 "NumberOfCopies" = "Antall ganger kopiert:";
-"PinKey" = "Trykk {pinKey} for å (av)merke.";
+"PinKey" = "Trykk {pinKey} for å merke.";
+"UnpinKey" = "Trykk {pinKey} for å avmerke.";
 "DeleteKey" = "Trykk {deleteKey} for å slette.";
+"OpenPreview" = "Trykk {previewKey} for å vise forhåndsvisningen.";
+"ClosePreview" = "Trykk {previewKey} for å skjule forhåndsvisningen.";
+"Dimensions" = "Dimensjoner:";
+"Size" = "Størrelse:";
+"CopyExtractedText" = "Kopier uttrukket tekst.";
+"EditItem" = "Rediger element";
