@@ -55,8 +55,10 @@ struct PreviewItemView: View {
                 Spacer()
               }
               .buttonStyle(.borderless)
-              .excludeFromWindowMovableByBackground()
             }
+            // Keep the image's pointer tracking independent of tooltip help.
+            .contentShape(Rectangle())
+            .excludeFromWindowMovableByBackground()
           } else {
             previewImage {
               ZStack {
