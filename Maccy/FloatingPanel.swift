@@ -1,12 +1,19 @@
 import Defaults
 import SwiftUI
 
+@MainActor
+protocol ImagePreviewActivating: AnyObject {
+  func activateForImagePreview()
+}
+
 // An NSPanel subclass that implements floating panel traits.
 // https://stackoverflow.com/questions/46023769/how-to-show-a-window-without-stealing-focus-on-macos
-class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
+class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate, ImagePreviewActivating {
   var isPresented: Bool = false
   var statusBarButton: NSStatusBarButton?
   let onClose: () -> Void
+  private var activatedForImagePreview = false
+  private var imagePreviewReturnTarget: NSRunningApplication?
 
   override var isMovable: Bool {
     get { Defaults[.popupPosition] != .statusItem }
@@ -44,9 +51,8 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     titlebarAppearsTransparent = true
     isMovableByWindowBackground = true
     hidesOnDeactivate = false
-    // Use a solid backing while verifying trackpad event delivery in the panel.
-    backgroundColor = .windowBackgroundColor
-    isOpaque = true
+    backgroundColor = .clear
+    isOpaque = false
     titlebarSeparatorStyle = .none
 
     // Hide all traffic light buttons
@@ -85,6 +91,7 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
   }
 
   func open(height: CGFloat, at popupPosition: PopupPosition = Defaults[.popupPosition]) {
+    if NSApp.isHidden { NSApp.unhideWithoutActivation() }
     let size = Defaults[.windowSize]
     let miniumHeight: CGFloat = AppState.shared.popup.minimumHeight
     let finalWidth = min(frame.width, size.width)
@@ -103,6 +110,20 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
         self.statusBarButton?.isHighlighted = true
       }
     }
+  }
+
+  func activateForImagePreview() {
+    let frontmost = NSWorkspace.shared.frontmostApplication
+    guard frontmost?.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+    if !activatedForImagePreview {
+      imagePreviewReturnTarget = frontmost
+    }
+    activatedForImagePreview = true
+    // A nonactivating clipboard panel can receive keys and scrolling while its
+    // application remains in the background. Trackpad magnification needs the
+    // application activation normally provided by a standard window.
+    NSApp.activate(ignoringOtherApps: true)
+    makeKeyAndOrderFront(nil)
   }
 
   func verticallyResize(to newHeight: CGFloat) {
@@ -229,6 +250,10 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
   }
 
   override func close() {
+    let returnFocus = activatedForImagePreview
+    let returnTarget = imagePreviewReturnTarget
+    activatedForImagePreview = false
+    imagePreviewReturnTarget = nil
     super.close()
     let appState = AppState.shared
     appState.preview.state = .closed
@@ -238,6 +263,15 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate {
     isPresented = false
     statusBarButton?.isHighlighted = false
     onClose()
+    if returnFocus,
+       NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier {
+      // Return the paste destination before History performs its normal paste.
+      NSApp.hide(nil)
+      if let returnTarget, !returnTarget.isTerminated,
+         NSWorkspace.shared.frontmostApplication?.processIdentifier != returnTarget.processIdentifier {
+        returnTarget.activate(options: [.activateIgnoringOtherApps])
+      }
+    }
   }
 
   // Allow text inputs inside the panel can receive focus

@@ -95,6 +95,15 @@ class ZoomableImageScrollView: NSScrollView {
 
   required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+  func activateForPointerInteraction() {
+    (window as? any ImagePreviewActivating)?.activateForImagePreview()
+  }
+
+  override func mouseDown(with event: NSEvent) {
+    activateForPointerInteraction()
+    super.mouseDown(with: event)
+  }
+
   isolated deinit {
     if let magnificationMonitor { NSEvent.removeMonitor(magnificationMonitor) }
   }
@@ -257,8 +266,10 @@ private class CenteredImageClipView: NSClipView {
 
 private class PreviewZoomImageView: NSImageView {
   override var mouseDownCanMoveWindow: Bool { false }
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   override func mouseDown(with event: NSEvent) {
+    (enclosingScrollView as? ZoomableImageScrollView)?.activateForPointerInteraction()
     if event.clickCount == 2 {
       (enclosingScrollView as? ZoomableImageScrollView)?.resetToFit()
     } else {

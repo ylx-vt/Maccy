@@ -63,6 +63,7 @@ xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
 按钮缩放、双指滚动和点击图片后的双指捏合已在诊断启动中由用户实机确认。
 普通与诊断启动共享事件订阅，诊断开关只控制日志。
 图片与缩放按钮共同声明鼠标交互区域，指针进入时禁止从该区域拖动窗口；该跟踪不依赖悬停提示。
+剪贴板浮窗默认不激活所属应用。图片点击会明确激活 Maccy 以接收捏合；关闭预览时恢复先前应用，保留原有粘贴目标。
 独立对照复现了透明背景配合不透明窗口标记时丢失捏合事件的问题；
 将 `FloatingPanel.isOpaque` 设为 `false` 后，在保持透明玻璃背景的对照中恢复捏合。
 图片使用 `NSMagnificationGestureRecognizer` 识别捏合；日常版实测先点击大图激活后可缩放，
