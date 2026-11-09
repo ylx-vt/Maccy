@@ -127,6 +127,12 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate, ImagePreviewActiv
   }
 
   override func sendEvent(_ event: NSEvent) {
+    if handleEscape(event) { return }
+    super.sendEvent(event)
+  }
+
+  @discardableResult
+  func handleEscape(_ event: NSEvent) -> Bool {
     if event.type == .keyDown,
        case .close = KeyChord(event),
        !AppState.shared.isEditingItem,
@@ -136,10 +142,10 @@ class FloatingPanel<Content: View>: NSPanel, NSWindowDelegate, ImagePreviewActiv
       let hasMarkedText = (firstResponder as? NSTextInputClient)?.hasMarkedText() ?? false
       if !hasMarkedText {
         close()
-        return
+        return true
       }
     }
-    super.sendEvent(event)
+    return false
   }
 
   func verticallyResize(to newHeight: CGFloat) {

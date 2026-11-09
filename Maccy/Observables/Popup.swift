@@ -147,6 +147,11 @@ class Popup {
   }
 
   private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+    if !isClosed(), let panel = AppState.shared.appDelegate?.panel,
+       event.window === panel || NSApp.keyWindow === panel,
+       panel.handleEscape(event) {
+      return nil
+    }
     if isHotKeyCode(Int(event.keyCode)) {
       if let item = History.shared.pressedShortcutItem {
         AppState.shared.navigator.select(item: item)
