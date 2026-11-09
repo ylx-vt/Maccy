@@ -40,3 +40,20 @@ python3 qa/prepare-preview-demo.py /tmp/maccy-preview-qa/Build/Products/Debug/Ma
 构建产物、截图、日志及补丁仅保留在被 Git 忽略的 `qa/artifacts/`，不上传个人剪贴板数据。
 
 正式替换日常使用的应用前，需完成真实触控板与实际使用路径验收，并为原应用和历史数据保留可恢复备份。
+
+## 本地日常版本
+
+个人日常版本使用 `LOCAL_FORK` 编译条件，由个人仓库维护更新，关闭官方 Sparkle 更新入口。
+本地临时签名没有开发者 Team ID；移除未使用的更新库链接，可保留沙盒、强化运行时和库验证。
+
+```sh
+xcodebuild -project Maccy.xcodeproj -scheme Maccy -configuration Release \
+  -derivedDataPath /tmp/maccy-release -destination 'platform=macOS' \
+  SWIFT_ACTIVE_COMPILATION_CONDITIONS=LOCAL_FORK \
+  OTHER_LDFLAGS=-Wl,-dead_strip_dylibs CODE_SIGNING_ALLOWED=YES \
+  CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= \
+  CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO build
+```
+
+安装前核验 `otool -L` 不含 Sparkle，沙盒开启且不带 `get-task-allow` 调试权限。
+原应用、历史和偏好备份保留在本机私有目录，不提交到 Git。自启使用应用内“登录时启动”。

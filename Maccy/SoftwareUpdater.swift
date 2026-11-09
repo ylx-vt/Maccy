@@ -1,3 +1,4 @@
+#if !LOCAL_FORK
 import Sparkle
 
 @Observable
@@ -37,3 +38,4 @@ class SoftwareUpdater {
     updater.checkForUpdates()
   }
 }
+#endif

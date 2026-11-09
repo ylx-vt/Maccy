@@ -15,7 +15,9 @@ struct GeneralSettingsPane: View {
   @State private var pasteModifier = HistoryItemAction.paste.modifierFlags.description
   @State private var pasteWithoutFormatting = HistoryItemAction.pasteWithoutFormatting.modifierFlags.description
 
+  #if !LOCAL_FORK
   @State private var updater = SoftwareUpdater()
+  #endif
 
   var body: some View {
     Settings.Container(contentWidth: 450) {
@@ -23,6 +25,10 @@ struct GeneralSettingsPane: View {
         LaunchAtLogin.Toggle {
           Text("LaunchAtLogin", tableName: "GeneralSettings")
         }
+        #if LOCAL_FORK
+        Text("LocalForkUpdates", tableName: "GeneralSettings")
+          .foregroundStyle(.secondary)
+        #else
         Toggle(isOn: $updater.automaticallyChecksForUpdates) {
           Text("CheckForUpdates", tableName: "GeneralSettings")
         }
@@ -30,6 +36,7 @@ struct GeneralSettingsPane: View {
           action: { updater.checkForUpdates() },
           label: { Text("CheckNow", tableName: "GeneralSettings") }
         )
+        #endif
       }
 
       Settings.Section(label: { Text("Open", tableName: "GeneralSettings") }) {

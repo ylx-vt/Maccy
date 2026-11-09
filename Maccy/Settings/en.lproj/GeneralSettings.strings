@@ -1,5 +1,6 @@
 "Title" = "General";
 "LaunchAtLogin" = "Launch at login";
+"LocalForkUpdates" = "This personal build is updated from your Git repository.";
 "CheckForUpdates" = "Check for updates automatically";
 "CheckNow" = "Check now";
 "Open" = "Open:";

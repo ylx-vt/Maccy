@@ -1,5 +1,6 @@
 "Title" = "通用";
 "LaunchAtLogin" = "登录时启动";
+"LocalForkUpdates" = "此个人版本通过你的 Git 仓库更新。";
 "CheckForUpdates" = "自动检查更新";
 "CheckNow" = "检查更新";
 "Open" = "打开：";
